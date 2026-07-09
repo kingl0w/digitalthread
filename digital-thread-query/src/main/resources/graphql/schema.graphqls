@@ -1,0 +1,31 @@
+type Query {
+  "Every deployed asset transitively containing a unit made from this lot."
+  blastRadiusByLot(lotId: ID!): [Asset!]!
+  "Every deployed asset transitively containing a unit built to this revision."
+  blastRadiusByRevision(revisionId: ID!): [Asset!]!
+  "Rank candidate root-cause lots for a cluster of failure events."
+  rootCause(eventIds: [ID!]!): [LotScore!]!
+  "Real recall: every registered aircraft whose design an AD campaign names."
+  blastRadiusByCampaign(campaignId: ID!): [Asset!]!
+  "AD campaigns ranked by registered fleet reach."
+  topCampaigns(limit: Int = 10): [CampaignReach!]!
+}
+
+type CampaignReach {
+  campaignId: ID!
+  title: String
+  designs: Int!
+  fleet: Int!
+}
+
+type Asset {
+  id: ID!
+  nNumber: String
+  yearMfr: String
+}
+
+type LotScore {
+  lotId: ID!
+  supplierId: String
+  hits: Int!
+}
