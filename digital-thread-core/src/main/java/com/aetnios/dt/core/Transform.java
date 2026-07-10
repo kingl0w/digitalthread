@@ -138,7 +138,8 @@ public class Transform {
     }
 
     private void sdrs() throws Exception {
-        int total = 0, assetHits = 0, assetMisses = 0, engineRevHits = 0, engineRevMisses = 0;
+        int total = 0, assetHits = 0, assetMisses = 0, engineRevHits = 0, engineRevMisses = 0, collisions = 0;
+        Map<String, Integer> ocnUses = new HashMap<>();
         List<Path> files = Files.list(raw.resolve("faa/sdr")).sorted().toList();
         for (Path file : files) {
             String html = Files.readString(file, StandardCharsets.ISO_8859_1);
@@ -190,8 +191,16 @@ public class Transform {
                 }
 
                 String subject = partUnit != null ? partUnit : engineUnit != null ? engineUnit : airframeUnit;
+                // Rows legitimately share an OperatorControlNumber (one report, several part rows);
+                // suffix repeats so each row stays a distinct FailureEvent. Deterministic because
+                // files and rows are read in sorted order.
+                String ocn = rec.getOrDefault("OperatorControlNumber", "");
+                String base = ocn.isEmpty() ? "SDR" : ocn;
+                int use = ocnUses.merge(base, 1, Integer::sum);
+                String eventId = (use == 1 && !ocn.isEmpty()) ? ocn : base + "#" + use;
+                if (use > 1) collisions++;
                 ObjectNode ev = Jsonl.obj().put("label", "FailureEvent")
-                        .put("id", rec.getOrDefault("OperatorControlNumber", ""))
+                        .put("id", eventId)
                         .put("date", rec.getOrDefault("DifficultyDate", ""))
                         .put("jascCode", rec.getOrDefault("JASCCode", ""))
                         .put("natureOfCondition", rec.getOrDefault("NatureOfConditionA", ""))
@@ -210,8 +219,8 @@ public class Transform {
                 events.write(ev);
             }
         }
-        System.out.printf("sdr: %d events; asset resolution %d hit / %d miss; engine design %d hit / %d miss%n",
-                total, assetHits, assetMisses, engineRevHits, engineRevMisses);
+        System.out.printf("sdr: %d events (%d shared-OCN rows disambiguated); asset resolution %d hit / %d miss; engine design %d hit / %d miss%n",
+                total, collisions, assetHits, assetMisses, engineRevHits, engineRevMisses);
     }
 
     private void ads() throws Exception {
@@ -235,32 +244,68 @@ public class Transform {
         System.out.printf("ad: %d campaigns kept, %d non-AD rules dropped%n", kept, dropped);
     }
 
+    // bare "X through Y" pairs, scanned only after a "serial number" anchor; length and
+    // digit guards keep prose like "paragraphs (g) through (i)" from matching
+    private static final Pattern SERIAL_RANGE = Pattern.compile("([A-Z0-9-]{4,}) through ([A-Z0-9-]{4,})");
+
     /**
      * Links Campaigns to the airframe designs their rule text names. Matches known registry model
      * strings inside the AD's applicability section, word-bounded so 210 never matches 210G.
-     * ponytail: model-level linking only; serial-range applicability is a later refinement.
+     * Where the prose after the model mention carries "serial numbers X through Y", the envelope
+     * of every range in that model's segment (up to the next "Model" mention) rides on the
+     * AFFECTS edge, and the blast-radius query narrows to units in range.
+     * ponytail: envelope, not the exact range list — units in the gaps between ranges are
+     * over-included, which is the conservative direction for a recall. Comparison is
+     * lexicographic and assumes one fixed-width serial format per model. Store the ranges as
+     * parallel array props if exactness ever matters.
      */
     private void adTexts() throws Exception {
         Path dir = raw.resolve("faa/ad_text");
         if (!Files.exists(dir)) return;
-        int linked = 0, campaigns = 0, noMatch = 0;
+        int linked = 0, ranged = 0, campaigns = 0, noMatch = 0;
         for (Path file : Files.list(dir).sorted().toList()) {
             String doc = file.getFileName().toString().replace(".txt", "").replace('_', '-');
             String text = Files.readString(file, StandardCharsets.ISO_8859_1);
             Matcher section = Pattern.compile("\\(c\\) Applicability(.*?)\\n\\s*\\(d\\)", Pattern.DOTALL).matcher(text);
-            String scopeText = section.find() ? section.group(1) : text;
+            // rejoin serials the Federal Register hard-wraps mid-token ("560-\n6290"), then
+            // collapse the remaining wraps so "X through\nY" matches
+            String scopeText = (section.find() ? section.group(1) : text)
+                    .replaceAll("-\\r?\\n\\s*", "-").replaceAll("\\s+", " ");
             int before = linked;
             for (Map.Entry<String, Set<String>> en : revsByModel.entrySet()) {
-                if (!Pattern.compile("\\b" + Pattern.quote(en.getKey()) + "\\b").matcher(scopeText).find()) continue;
+                Matcher mention = Pattern.compile("\\b" + Pattern.quote(en.getKey()) + "\\b").matcher(scopeText);
+                boolean found = false;
+                String[] range = null;
+                while (mention.find()) {
+                    found = true;
+                    int next = scopeText.indexOf(" Model", mention.end());
+                    String segment = scopeText.substring(mention.end(), next < 0 ? scopeText.length() : next);
+                    int anchor = segment.toLowerCase().indexOf("serial number");
+                    if (anchor < 0) continue;
+                    Matcher sr = SERIAL_RANGE.matcher(segment.substring(anchor));
+                    String lo = null, hi = null;
+                    while (sr.find()) {
+                        if (!sr.group(1).matches(".*\\d.*") || !sr.group(2).matches(".*\\d.*")) continue;
+                        if (lo == null || sr.group(1).compareTo(lo) < 0) lo = sr.group(1);
+                        if (hi == null || sr.group(2).compareTo(hi) > 0) hi = sr.group(2);
+                    }
+                    if (lo != null) { range = new String[]{lo, hi}; break; }
+                }
+                if (!found) continue;
                 for (String revId : en.getValue()) {
-                    edge("AFFECTS", doc, revId);
+                    if (range == null) {
+                        edge("AFFECTS", doc, revId);
+                    } else {
+                        edge("AFFECTS", doc, revId, Map.of("serialFrom", range[0], "serialTo", range[1]));
+                        ranged++;
+                    }
                     linked++;
                 }
             }
             if (linked > before) campaigns++; else noMatch++;
         }
-        System.out.printf("ad text: %d campaigns linked to designs via %d AFFECTS edges, %d texts matched no Cessna model%n",
-                campaigns, linked, noMatch);
+        System.out.printf("ad text: %d campaigns linked to designs via %d AFFECTS edges (%d serial-ranged), %d texts matched no Cessna model%n",
+                campaigns, linked, ranged, noMatch);
     }
 
     private interface Props { void apply(ObjectNode o); }
@@ -280,8 +325,14 @@ public class Transform {
     }
 
     private void edge(String type, String from, String to) throws Exception {
+        edge(type, from, to, Map.of());
+    }
+
+    private void edge(String type, String from, String to, Map<String, String> props) throws Exception {
         if (to == null || from == null || !seen.add(type + "|" + from + "|" + to)) return;
-        edges.write(Jsonl.obj().put("type", type).put("from", from).put("to", to));
+        ObjectNode o = Jsonl.obj().put("type", type).put("from", from).put("to", to);
+        props.forEach(o::put);
+        edges.write(o);
     }
 
     private static String norm(String s) {

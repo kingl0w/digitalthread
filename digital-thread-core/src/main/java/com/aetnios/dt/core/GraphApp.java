@@ -55,6 +55,7 @@ public class GraphApp {
             }
             loadEdges(session, List.of(canonical.resolve("edges.jsonl"), seed.resolve("edges.jsonl")));
             linkFailures(session, List.of(canonical.resolve("failure_event.jsonl"), seed.resolve("failure_event.jsonl")));
+            closeSuperseded(session);
 
             JsonNode gt = Jsonl.M.readTree(seed.resolve("ground_truth.json").toFile());
             realRecalls(session);
@@ -92,9 +93,11 @@ public class GraphApp {
     /**
      * Bitemporal stamps: recordedAt = when this system first wrote the fact (transaction time),
      * validFrom = when the fact became true in the world (domain time, where a source carries one).
-     * validTo stays absent = still valid. ON CREATE keeps recordedAt stable across replays.
-     * ponytail: no supersession — validTo is never closed because no source emits corrections
-     * or retractions today; add close-out logic (SET old.validTo, create successor) when one does.
+     * validTo stays absent = still valid; superseded revisions are the one closure a source
+     * (the seed's SUPERSEDED_BY chain) actually emits — closeSuperseded() sets their validTo.
+     * ON CREATE keeps recordedAt stable across replays.
+     * ponytail: other labels never close validTo because no source emits corrections or
+     * retractions for them today; extend closeSuperseded when one does.
      */
     private static String validFrom(JsonNode n, String label) {
         String field = switch (label) {
@@ -102,6 +105,7 @@ public class GraphApp {
             case "Campaign" -> "publicationDate";
             case "Asset" -> "airworthinessDate";
             case "WorkOrder" -> "start";
+            case "Revision" -> "introduced";
             default -> null;
         };
         return field == null ? null : Dates.toIso(n.path(field).asText(""));
@@ -123,8 +127,14 @@ public class GraphApp {
         for (Path file : files) {
             for (String line : Files.readAllLines(file)) {
                 JsonNode e = Jsonl.M.readTree(line);
+                Map<String, Object> props = new HashMap<>();
+                Iterator<String> it = e.fieldNames();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    if (!k.equals("type") && !k.equals("from") && !k.equals("to")) props.put(k, e.get(k).asText());
+                }
                 byType.computeIfAbsent(e.path("type").asText(), k -> new ArrayList<>())
-                        .add(Map.of("from", e.path("from").asText(), "to", e.path("to").asText()));
+                        .add(Map.of("from", e.path("from").asText(), "to", e.path("to").asText(), "props", props));
             }
         }
         for (Map.Entry<String, List<Map<String, Object>>> en : byType.entrySet()) {
@@ -138,10 +148,22 @@ public class GraphApp {
             List<Map<String, Object>> batch = rows.subList(i, Math.min(i + BATCH, rows.size()));
             session.executeWrite(tx -> tx.run(
                     "UNWIND $rows AS row MATCH (a:Node {id: row.from}) MATCH (b:Node {id: row.to}) "
-                            + "MERGE (a)-[r:" + type + "]->(b) ON CREATE SET r.recordedAt = datetime()",
+                            + "MERGE (a)-[r:" + type + "]->(b) ON CREATE SET r.recordedAt = datetime() "
+                            + "SET r += coalesce(row.props, {})",
                     Map.of("rows", new ArrayList<>(batch))).consume());
         }
         return rows.size();
+    }
+
+    /** The one supersession a source emits: a superseding revision closes its predecessor's interval. */
+    private static void closeSuperseded(Session session) {
+        long closed = session.run("""
+                MATCH (a:Revision)-[:SUPERSEDED_BY]->(b:Revision)
+                WHERE b.validFrom IS NOT NULL
+                SET a.validTo = b.validFrom
+                RETURN count(a) AS c
+                """).single().get("c").asLong();
+        System.out.printf("supersession: closed validTo on %d superseded revisions%n", closed);
     }
 
     /** Failure events carry unitId/assetId as properties; materialize them as ON_UNIT / ON_ASSET edges. */
@@ -160,10 +182,12 @@ public class GraphApp {
         System.out.printf("linked failures: %d ON_UNIT, %d ON_ASSET%n", a, b);
     }
 
-    /** Real recalls: AD campaigns linked to designs by full-text parse. No oracle; report reach. */
+    /** Real recalls: AD campaigns linked to designs by full-text parse. No oracle; report reach.
+     *  Serial-ranged AFFECTS edges narrow to units in range (lexicographic — ISO-width serials). */
     private static void realRecalls(Session session) {
         session.run("""
-                MATCH (c:Campaign)-[:AFFECTS]->(r:Revision)<-[:BUILT_TO]-(:SerializedUnit)-[:INSTALLED_IN]->(a:Asset)
+                MATCH (c:Campaign)-[af:AFFECTS]->(r:Revision)<-[:BUILT_TO]-(u:SerializedUnit)-[:INSTALLED_IN]->(a:Asset)
+                WHERE af.serialFrom IS NULL OR (u.serial >= af.serialFrom AND u.serial <= af.serialTo)
                 WITH c, count(DISTINCT r) AS designs, count(DISTINCT a) AS fleet
                 RETURN c.id AS id, left(c.title, 70) AS title, designs, fleet
                 ORDER BY fleet DESC LIMIT 3
@@ -211,7 +235,8 @@ public class GraphApp {
         return ok;
     }
 
-    /** Hardening check: every node and relationship carries transaction time. */
+    /** Hardening check: every node and relationship carries transaction time, and supersession
+     *  actually closed some revision intervals (the seed always emits SUPERSEDED_BY chains). */
     private static boolean bitemporalCoverage(Session session) {
         long nodes = session.run("MATCH (n:Node) WHERE n.recordedAt IS NULL RETURN count(n) AS c")
                 .single().get("c").asLong();
@@ -219,9 +244,11 @@ public class GraphApp {
                 .single().get("c").asLong();
         long dated = session.run("MATCH (n:Node) WHERE n.validFrom IS NOT NULL RETURN count(n) AS c")
                 .single().get("c").asLong();
-        boolean ok = nodes == 0 && rels == 0;
-        System.out.printf("%s bitemporality: %d nodes / %d rels missing recordedAt, %d nodes carry validFrom%n",
-                ok ? "PASS" : "FAIL", nodes, rels, dated);
+        long closed = session.run("MATCH (n:Revision) WHERE n.validTo IS NOT NULL RETURN count(n) AS c")
+                .single().get("c").asLong();
+        boolean ok = nodes == 0 && rels == 0 && closed > 0;
+        System.out.printf("%s bitemporality: %d nodes / %d rels missing recordedAt, %d nodes carry validFrom, %d revisions closed by supersession%n",
+                ok ? "PASS" : "FAIL", nodes, rels, dated, closed);
         return ok;
     }
 

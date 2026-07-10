@@ -187,13 +187,19 @@ Replay converges to the exact baseline; a duplicate replay changes nothing (176,
 
 - **Bitemporality** — every node and edge carries `recordedAt` (transaction time, stamped
   `ON CREATE` so replays preserve first-seen); nodes carry `validFrom` (domain time) where a
-  source has one. `validTo` stays open until a source emits corrections.
+  source has one. Superseded revisions get `validTo` closed by their successor's `validFrom`;
+  other labels stay open until a source emits corrections.
+- **AD serial ranges** — where a rule's applicability text carries "serial numbers X through Y",
+  the range envelope rides on the `AFFECTS` edge and campaign blast radius narrows to units in
+  range; ADs without ranges stay model-level.
 - **SHACL** — the schema is formalized in
   [`shapes.ttl`](digital-thread-core/src/main/resources/shapes.ttl): required properties per
   label, endpoint types for all eight edges. Validation gates every load; a dangling edge or an
   edge into the wrong node type fails before Neo4j is touched.
 - **Tests** — `mvn test` in `digital-thread-core` runs the full pipeline (SHACL → load → money
-  queries → bitemporal coverage) against a throwaway Neo4j via Testcontainers.
+  queries → bitemporal coverage) against a throwaway Neo4j via Testcontainers; `mvn test` in
+  `digital-thread-query` covers schema/controller wiring, the rootCause id cap, and the rate
+  limiter against a mocked driver.
 - **Observability** — Spring Actuator health/metrics on both services; Micrometer gauges for
   ingest entity-resolution quality.
 
@@ -236,4 +242,5 @@ only in Render environment variables; the database itself is never publicly reac
   (make/model text, part serials). One node, regardless of which feed mentioned it.
 
 Deliberate shortcuts are tracked inline — `grep -rn "ponytail:" --include="*.java"` for the
-ledger (AD applicability is model-level, SDR crawl assumes monthly pages, validTo never closes).
+ledger (serial ranges are envelopes rather than exact lists, the in-memory rate limiter is
+single-instance, formerly-split SDR months re-query once per crawl).

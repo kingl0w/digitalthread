@@ -143,8 +143,13 @@ public class Seed {
     }
 
     private void emitRevision(String id, String designKey, String rev) throws Exception {
+        // introduced = domain time for the revision's validity interval; rev B's date closes
+        // rev A's validTo at load. Fixed dates, deliberately not rng-drawn: consuming rng here
+        // would shift every downstream draw and invalidate the documented ground truth.
         revisions.write(Jsonl.obj().put("label", "Revision").put("id", id)
-                .put("kind", "synthetic-design").put("design", designKey).put("rev", rev).put("source", "seed"));
+                .put("kind", "synthetic-design").put("design", designKey).put("rev", rev)
+                .put("introduced", rev.equals("A") ? "2021-01-01" : "2021-07-01")
+                .put("source", "seed"));
     }
 
     private String unit(String kind, String name, String revId, String parent, int idx) throws Exception {

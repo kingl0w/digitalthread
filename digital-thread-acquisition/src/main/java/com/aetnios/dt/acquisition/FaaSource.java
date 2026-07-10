@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -137,58 +139,80 @@ public class FaaSource implements Source {
         for (String make : scope.makes()) {
             for (int year = scope.yearFrom(); year <= scope.yearTo(); year++) {
                 for (int month = 1; month <= 12; month++) {
+                    YearMonth ym = YearMonth.of(year, month);
                     String name = String.format("%s_%d_%02d", make, year, month);
-                    if (!refresh && store.exists(CAT_SDR, name, "xls")) continue;
-                    try {
-                        pullSdrMonth(make, YearMonth.of(year, month), name, client, store);
-                    } catch (Exception e) {
-                        System.err.printf("sdr %s failed: %s%n", name, e.getMessage());
-                        store.logFailure(SDR_URL + "#" + name, e.getMessage());
-                    }
+                    pullSdrWindow(make, ym.atDay(1), ym.atEndOfMonth(), name, client, store, refresh);
                 }
             }
         }
     }
 
-    private void pullSdrMonth(String make, YearMonth ym, String name, HttpJsonClient client, RawStore store) throws Exception {
-        HttpJsonClient.Response blank = client.get(SDR_URL);
-        if (blank.status() != 200) throw new RuntimeException("query page HTTP " + blank.status());
+    /**
+     * One date window. If the result grid paginates (more records than visible checkboxes), the
+     * window halves and recurses; fragments store as name_a / name_b and are idempotent like
+     * whole months. ponytail: a formerly-split month re-runs its query on every crawl (no month
+     * marker file, only fragments exist) — three extra requests per such month; add a marker if
+     * split months ever get common.
+     */
+    private void pullSdrWindow(String make, LocalDate from, LocalDate to, String name,
+                               HttpJsonClient client, RawStore store, boolean refresh) {
+        if (!refresh && store.exists(CAT_SDR, name, "xls")) return;
+        try {
+            HttpJsonClient.Response blank = client.get(SDR_URL);
+            if (blank.status() != 200) throw new RuntimeException("query page HTTP " + blank.status());
 
-        List<String[]> query = hiddenFields(blank.text());
-        query.add(new String[]{"ctl00$pageContentPlaceHolder$tbDifficultyDateFrom", String.format("%02d/01/%d", ym.getMonthValue(), ym.getYear())});
-        query.add(new String[]{"ctl00$pageContentPlaceHolder$tbDifficultyDateTo", String.format("%02d/%02d/%d", ym.getMonthValue(), ym.atEndOfMonth().getDayOfMonth(), ym.getYear())});
-        query.add(new String[]{"ctl00$pageContentPlaceHolder$tbAircraftManufacturer", make});
-        for (String tb : new String[]{"tbAircraftModel", "tbEngineManufacturer", "tbEngineModel",
-                "tbPropellerManufacturer", "tbPropellerModel", "tbPartManufacturer", "tbPartName",
-                "tbPartNumber", "tbJASCCode", "tbOperatorDesignator", "tbOperatorControlNumber",
-                "tbRegistrationNumber", "tbProblemDescription"}) {
-            query.add(new String[]{"ctl00$pageContentPlaceHolder$" + tb, ""});
+            List<String[]> query = hiddenFields(blank.text());
+            query.add(new String[]{"ctl00$pageContentPlaceHolder$tbDifficultyDateFrom", usDate(from)});
+            query.add(new String[]{"ctl00$pageContentPlaceHolder$tbDifficultyDateTo", usDate(to)});
+            query.add(new String[]{"ctl00$pageContentPlaceHolder$tbAircraftManufacturer", make});
+            for (String tb : new String[]{"tbAircraftModel", "tbEngineManufacturer", "tbEngineModel",
+                    "tbPropellerManufacturer", "tbPropellerModel", "tbPartManufacturer", "tbPartName",
+                    "tbPartNumber", "tbJASCCode", "tbOperatorDesignator", "tbOperatorControlNumber",
+                    "tbRegistrationNumber", "tbProblemDescription"}) {
+                query.add(new String[]{"ctl00$pageContentPlaceHolder$" + tb, ""});
+            }
+            query.add(new String[]{"ctl00$pageContentPlaceHolder$btnQuery", "Search"});
+
+            HttpJsonClient.Response results = client.postForm(SDR_URL, encode(query));
+            if (results.status() != 200) throw new RuntimeException("query post HTTP " + results.status());
+            String html = results.text();
+
+            Matcher count = RECORD_COUNT.matcher(html);
+            int records = count.find() ? Integer.parseInt(count.group(1)) : 0;
+
+            List<String[]> download = hiddenFields(html);
+            List<String> boxes = new ArrayList<>();
+            Matcher cb = CHECKBOX.matcher(html);
+            while (cb.find()) boxes.add(cb.group(1));
+            // Split when rows are missing from the grid (boxes < records) — and also when rows
+            // are present but the "returned N records" message is absent (records == 0): the
+            // server drops the message and silently caps the grid at 3000 rows on large result
+            // sets, so an unverifiable count means the download can't be trusted.
+            if (!boxes.isEmpty() && (records == 0 || boxes.size() < records)) {
+                if (from.equals(to)) throw new RuntimeException(
+                        "grid incomplete within a single day: " + boxes.size() + " of " + records + " rows visible");
+                LocalDate mid = from.plusDays(ChronoUnit.DAYS.between(from, to) / 2);
+                System.out.printf("sdr %s: %d of %d rows visible, splitting %s..%s%n",
+                        name, boxes.size(), records, from, to);
+                pullSdrWindow(make, from, mid, name + "_a", client, store, refresh);
+                pullSdrWindow(make, mid.plusDays(1), to, name + "_b", client, store, refresh);
+                return;
+            }
+            for (String b : boxes) download.add(new String[]{b, "on"});
+            download.add(new String[]{"ctl00$pageContentPlaceHolder$btnDownload", "Download"});
+
+            HttpJsonClient.Response file = client.postForm(SDR_URL, encode(download));
+            if (file.status() != 200) throw new RuntimeException("download post HTTP " + file.status());
+            store.write(CAT_SDR, name, "xls", SDR_URL + "#" + name, file.status(), file.body());
+            System.out.printf("sdr %s: %d records%n", name, records);
+        } catch (Exception e) {
+            System.err.printf("sdr %s failed: %s%n", name, e.getMessage());
+            store.logFailure(SDR_URL + "#" + name, e.getMessage());
         }
-        query.add(new String[]{"ctl00$pageContentPlaceHolder$btnQuery", "Search"});
+    }
 
-        HttpJsonClient.Response results = client.postForm(SDR_URL, encode(query));
-        if (results.status() != 200) throw new RuntimeException("query post HTTP " + results.status());
-        String html = results.text();
-
-        Matcher count = RECORD_COUNT.matcher(html);
-        int records = count.find() ? Integer.parseInt(count.group(1)) : 0;
-
-        List<String[]> download = hiddenFields(html);
-        List<String> boxes = new ArrayList<>();
-        Matcher cb = CHECKBOX.matcher(html);
-        while (cb.find()) boxes.add(cb.group(1));
-        // ponytail: no grid-pager handling; monthly windows keep result sets on one page. If this
-        // fires, shrink the window or walk the pager.
-        if (records > 0 && boxes.size() < records) {
-            throw new RuntimeException("grid paginated: " + boxes.size() + " of " + records + " rows visible");
-        }
-        for (String b : boxes) download.add(new String[]{b, "on"});
-        download.add(new String[]{"ctl00$pageContentPlaceHolder$btnDownload", "Download"});
-
-        HttpJsonClient.Response file = client.postForm(SDR_URL, encode(download));
-        if (file.status() != 200) throw new RuntimeException("download post HTTP " + file.status());
-        store.write(CAT_SDR, name, "xls", SDR_URL + "#" + name, file.status(), file.body());
-        System.out.printf("sdr %s: %d records%n", name, records);
+    private static String usDate(LocalDate d) {
+        return String.format("%02d/%02d/%d", d.getMonthValue(), d.getDayOfMonth(), d.getYear());
     }
 
     private static List<String[]> hiddenFields(String html) {

@@ -131,12 +131,27 @@ alternative but render.yaml (repo root) is the deployed config.
 - Query field names for smoke tests: Asset exposes `id` (not assetId), LotScore exposes `hits`
   (not eventCount).
 
-Next up:
-1. Deferred refinements: AD serial-range applicability (model-level only today), SDR grid pager
-   (monthly windows assumed to fit one page), FailureEvent id collisions across SDR rows sharing
-   an OperatorControlNumber, query-service tests, validTo supersession (nothing closes validity
-   intervals yet — no source emits corrections). Grep `ponytail:` for the deliberate-shortcut
-   ledger.
+## Refinements (DONE 2026-07-10, all five verified)
+1. AD serial ranges: applicability prose "serial numbers X through Y" parsed per model segment
+   (line-wrapped serials rejoined, multi-range lists enveloped — over-inclusion is the
+   conservative direction for a recall); envelope rides on AFFECTS as serialFrom/serialTo and
+   both campaign queries narrow to units in range. 6 of 74 AFFECTS edges ranged; 2020-24046 has
+   no ranges in its text, so the documented 6,393 is unchanged.
+2. SDR crawl: window splits and recurses when the grid is incomplete. Real finding: the server
+   silently caps the grid at large result sets AND drops the "returned N records" message, so
+   rows-present-with-no-count also triggers the split. Verified live: a 5-year window split into
+   4 fragments totaling exactly the known 3,891 records.
+3. FailureEvent ids: rows sharing an OperatorControlNumber get deterministic #2/#3 suffixes.
+   Current dataset has 0 collisions, so no ids changed; the fix is protective.
+4. Query-service tests: RateLimitFilterTest (pinned clock seam), GraphQlWiringTest
+   (@GraphQlTest + mocked driver — catches schema/record field drift, the assetId-vs-id bug
+   class). Note: Asset exposes `id`, LotScore exposes `hits`.
+5. Supersession: seed revisions carry `introduced` (fixed dates, deliberately not rng-drawn so
+   ground truth stays stable); GraphApp closes a.validTo = b.validFrom across SUPERSEDED_BY
+   (680 closed) and the bitemporal check asserts closed > 0.
+
+Next up: grep `ponytail:` for the remaining deliberate-shortcut ledger (range envelopes vs exact
+lists, single-instance rate limiter, split months re-query once per crawl).
 
 ## Invariants
 - Raw zone is immutable; acquisition never parses into the model.

@@ -52,15 +52,18 @@ public class ThreadQueries {
         this.driver = driver;
     }
 
+    // serial-ranged AFFECTS edges narrow to units in range (lexicographic — fixed-width serials)
     private static final String BLAST_BY_CAMPAIGN = """
-            MATCH (:Campaign {id: $id})-[:AFFECTS]->(:Revision)<-[:BUILT_TO]-(u:SerializedUnit)
+            MATCH (:Campaign {id: $id})-[af:AFFECTS]->(:Revision)<-[:BUILT_TO]-(u:SerializedUnit)
+            WHERE af.serialFrom IS NULL OR (u.serial >= af.serialFrom AND u.serial <= af.serialTo)
             MATCH (u)<-[:COMPOSED_OF*0..]-(root:SerializedUnit)-[:INSTALLED_IN]->(a:Asset)
             RETURN DISTINCT a.id AS id, a.nNumber AS nNumber, a.yearMfr AS yearMfr
             ORDER BY id
             """;
 
     private static final String TOP_CAMPAIGNS = """
-            MATCH (c:Campaign)-[:AFFECTS]->(r:Revision)<-[:BUILT_TO]-(:SerializedUnit)-[:INSTALLED_IN]->(a:Asset)
+            MATCH (c:Campaign)-[af:AFFECTS]->(r:Revision)<-[:BUILT_TO]-(u:SerializedUnit)-[:INSTALLED_IN]->(a:Asset)
+            WHERE af.serialFrom IS NULL OR (u.serial >= af.serialFrom AND u.serial <= af.serialTo)
             WITH c, count(DISTINCT r) AS designs, count(DISTINCT a) AS fleet
             RETURN c.id AS id, c.title AS title, designs, fleet
             ORDER BY fleet DESC LIMIT $limit

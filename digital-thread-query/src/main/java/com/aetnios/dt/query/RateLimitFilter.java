@@ -33,7 +33,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(req, res);
             return;
         }
-        long now = System.currentTimeMillis() / 60_000;
+        long now = minuteNow();
         if (now != window) {
             window = now;
             counts.clear();
@@ -48,5 +48,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
         chain.doFilter(req, res);
+    }
+
+    // seam so tests can pin the window instead of racing the wall clock
+    long minuteNow() {
+        return System.currentTimeMillis() / 60_000;
     }
 }
