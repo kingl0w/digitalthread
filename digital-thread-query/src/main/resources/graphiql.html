@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Thread — GraphiQL</title>
+<!-- Pinned versions on jsDelivr: Spring's bundled GraphiQL page loads un-pinned assets from
+     unpkg, whose redirects drop CORS headers and strand the page on "Loading". -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphiql@3.7.1/graphiql.min.css">
+<style>html, body, #graphiql { height: 100%; margin: 0; }</style>
+</head>
+<body>
+<div id="graphiql">Loading GraphiQL…</div>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/graphiql@3.7.1/graphiql.min.js"></script>
+<script>
+const DEFAULT_QUERY = `# Digital Thread — two money queries over 176k nodes of FAA + synthetic data.
+# Rate limited to 30 requests/minute.
+
+# 1. Recall blast radius: every registered aircraft that transitively
+#    contains a unit made from the bad material lot (ground truth: 20).
+{
+  blastRadiusByLot(lotId: "LOT-00049") { id nNumber yearMfr }
+}
+
+# 2. Root cause: walk a failure cluster back through the assembly tree
+#    to the common upstream lot.
+# { rootCause(eventIds: ["SEED-F-0001","SEED-F-0002","SEED-F-0003","SEED-F-0004","SEED-F-0005","SEED-F-0006","SEED-F-0007","SEED-F-0008","SEED-F-0009"]) { lotId supplierId hits } }
+
+# 3. A real Airworthiness Directive's reach, parsed from Federal Register
+#    rule text (6,393 registered aircraft).
+# { blastRadiusByCampaign(campaignId: "2020-24046") { id } }
+
+# 4. AD campaigns ranked by fleet reach.
+# { topCampaigns(limit: 5) { campaignId title designs fleet } }
+`;
+ReactDOM.createRoot(document.getElementById('graphiql')).render(
+  React.createElement(GraphiQL, {
+    fetcher: GraphiQL.createFetcher({ url: '/graphql' }),
+    defaultQuery: DEFAULT_QUERY,
+  })
+);
+</script>
+</body>
+</html>
