@@ -112,11 +112,19 @@ Public URL: https://digital-thread-query.onrender.com (GraphiQL at /graphiql). S
 from Fly.io to Render free tier — Fly requires a card, Render doesn't. fly.toml is kept as an
 alternative but render.yaml (repo root) is the deployed config.
 
-- Neo4j AuraDB Free instance b28b1ca7 (name digital_thread, second free account; creds in
-  Neo4j-b28b1ca7-Created-2026-07-10.txt in the Windows Downloads folder — never commit them).
-  Loaded and verified in place: SHACL 0 violations, blast radius 20/20 and 17/17, root cause
-  LOT-00049 9/9, AD 2020-24046 = 6,393, full bitemporal coverage. MUST stay separate from the
-  user's other Aura Free instance a69394ca ("pharma-supply-graph", different project).
+- Neo4j AuraDB Free instance 43357737 (name digital_thread, second free account; creds in
+  Neo4j-43357737-Created-2026-07-10.txt in the Windows Downloads folder — never commit them).
+  Replaces b28b1ca7, which was DELETED 2026-07-10 to rotate credentials after the password
+  briefly leaked to public git history via a .claude/settings.local.json temp file (history
+  rewritten + force-pushed; .claude/ now in .gitignore; never pass the DB password inline on a
+  command line — read it from the creds file). Loaded and verified in place: SHACL 0 violations,
+  blast radius 20/20 and 17/17, root cause LOT-00049 9/9, AD 2020-24046 = 6,393, 680 revisions
+  closed by supersession. MUST stay separate from the user's other Aura Free instance a69394ca
+  ("pharma-supply-graph", different project).
+- Landing page: / serves a live showcase (src/main/resources/index.html, served by
+  GraphiqlPage) that runs the money queries against /graphql on button press; GraphiQL moved to
+  a pinned-CDN page after Spring's bundled one broke on unpkg CORS. Design context for future
+  design work is in .impeccable.md.
 - Code on GitHub: https://github.com/kingl0w/digitalthread (public, master). Render deploys it
   as a Blueprint (render.yaml) on every push; NEO4J_* secrets live in Render env vars.
 - Smoke-tested on the public URL: blastRadiusByLot(LOT-00049) 20 assets, rootCause 9/9 hits on

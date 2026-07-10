@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Thread — recall blast radius &amp; failure root cause, live</title>
+<meta name="description" content="Fragmented FAA data resolved into one Neo4j knowledge graph. Watch recall blast radius and failure root cause resolve live.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Spline+Sans+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  color-scheme: light dark;
+  --paper:      light-dark(oklch(0.968 0.008 85),  oklch(0.22 0.015 260));
+  --paper-2:    light-dark(oklch(0.945 0.010 85),  oklch(0.25 0.018 260));
+  --ink:        light-dark(oklch(0.25 0.02 260),   oklch(0.93 0.008 85));
+  --ink-2:      light-dark(oklch(0.42 0.018 260),  oklch(0.76 0.01 85));
+  --ink-3:      light-dark(oklch(0.58 0.014 260),  oklch(0.60 0.012 260));
+  --rule:       light-dark(oklch(0.78 0.012 260),  oklch(0.38 0.015 260));
+  --orange:     light-dark(oklch(0.64 0.185 45),   oklch(0.72 0.17 48));
+  --orange-ink: light-dark(oklch(0.99 0.005 85),   oklch(0.2 0.02 260));
+  --green:      light-dark(oklch(0.54 0.11 165),   oklch(0.72 0.13 165));
+  --red:        light-dark(oklch(0.55 0.19 25),    oklch(0.68 0.17 25));
+  --amber:      light-dark(oklch(0.60 0.13 75),    oklch(0.75 0.13 80));
+  --blue:       light-dark(oklch(0.50 0.09 255),   oklch(0.72 0.1 255));
+  --mono: "Spline Sans Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Archivo", sans-serif;
+  font-variation-settings: "wdth" 100;
+  font-size: clamp(15px, 1.05vw + 10px, 17px); line-height: 1.55;
+}
+main { max-width: 1060px; margin: 0 auto; padding: 0 clamp(18px, 4vw, 44px) 0; }
+a { color: inherit; text-decoration-color: var(--orange); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: var(--orange); }
+
+/* ---- masthead ------------------------------------------------------- */
+.docket {
+  display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline;
+  border-bottom: 3px solid var(--ink); padding: 14px 0 10px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--ink-2);
+}
+.docket .no { color: var(--ink); font-weight: 600; }
+.docket .live { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
+.dot.up { background: var(--green); animation: pulse 2.4s ease-out infinite; }
+.dot.down { background: var(--red); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--green) 45%, transparent); }
+                   70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+header.mast { padding: clamp(34px, 6vw, 72px) 0 0; }
+.kicker {
+  font-variation-settings: "wdth" 122; font-weight: 600; font-size: 13px;
+  letter-spacing: .34em; text-transform: uppercase; color: var(--orange);
+}
+h1 {
+  font-variation-settings: "wdth" 68; font-weight: 800;
+  font-size: clamp(46px, 9.2vw, 118px); line-height: .92; letter-spacing: -.01em;
+  text-transform: uppercase; margin: 10px 0 0; text-wrap: balance;
+}
+h1 em { font-style: normal; color: var(--orange); }
+.standfirst {
+  max-width: 58ch; font-size: clamp(16px, 1.4vw + 9px, 20px); line-height: 1.5;
+  color: var(--ink-2); margin: 26px 0 0;
+}
+.standfirst strong { color: var(--ink); }
+.mast-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 34px; margin: 34px 0 0; padding: 12px 0;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
+}
+.mast-meta b { color: var(--ink); font-weight: 600; }
+
+/* ---- sections -------------------------------------------------------- */
+section { padding: clamp(44px, 7vw, 84px) 0 0; }
+.para {
+  display: grid; grid-template-columns: minmax(0, 30ch) minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 56px); align-items: start;
+}
+@media (max-width: 760px) { .para { grid-template-columns: 1fr; } }
+.para > aside h2 {
+  font-variation-settings: "wdth" 75; font-weight: 750; text-transform: uppercase;
+  font-size: clamp(24px, 3.4vw, 38px); line-height: 1.02; margin: 0; letter-spacing: 0;
+}
+.para > aside .mark {
+  font-family: var(--mono); font-size: 12px; color: var(--orange); letter-spacing: .12em;
+  display: block; margin-bottom: 10px;
+}
+.para > aside p { color: var(--ink-2); font-size: 14.5px; max-width: 30ch; }
+.para > aside p code, .body code {
+  font-family: var(--mono); font-size: .86em; background: var(--paper-2);
+  padding: 1px 5px; border-radius: 3px;
+}
+
+/* traversal line */
+.thread {
+  font-family: var(--mono); font-size: clamp(11.5px, 1.4vw, 14px); line-height: 2.3;
+  padding: 18px 0 4px; overflow-x: auto; white-space: nowrap;
+}
+.thread .n { padding: 4px 9px; border: 1.5px solid var(--ink); border-radius: 3px; font-weight: 600; }
+.thread .lot { border-color: var(--amber); color: var(--amber); }
+.thread .unit { border-color: var(--blue); color: var(--blue); }
+.thread .asset { border-color: var(--green); color: var(--green); }
+.thread .e { color: var(--ink-3); padding: 0 2px; letter-spacing: -.05em; }
+.thread .lbl { color: var(--ink-3); font-size: .82em; }
+
+/* stamp buttons + teletype */
+.stamp {
+  font-family: "Archivo", sans-serif; font-variation-settings: "wdth" 118;
+  font-weight: 700; letter-spacing: .18em; text-transform: uppercase; font-size: 13px;
+  color: var(--ink); background: transparent; border: 2px solid var(--ink);
+  padding: 13px 26px 12px; cursor: pointer; border-radius: 2px;
+  transition: background .15s ease-out, color .15s ease-out, transform .06s ease-out;
+}
+.stamp:hover { background: var(--orange); border-color: var(--orange); color: var(--orange-ink); }
+.stamp:active { transform: translateY(1px); }
+.stamp:disabled { opacity: .45; cursor: wait; }
+.stamp:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.tty {
+  font-family: var(--mono); font-size: 13px; color: var(--ink-2); min-height: 1.6em;
+  margin-top: 14px; overflow-wrap: anywhere;
+}
+.tty b { color: var(--orange); font-weight: 600; }
+.tty .err { color: var(--red); }
+
+/* manifest of registration plates */
+.manifest { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.plate {
+  font-family: var(--mono); font-weight: 600; font-size: 14px; letter-spacing: .06em;
+  border: 1.6px solid var(--ink); border-radius: 3px; padding: 7px 11px 6px;
+  position: relative; animation: land .45s cubic-bezier(.16,1,.3,1) backwards;
+}
+.plate small { display: block; font-weight: 400; font-size: 9.5px; color: var(--ink-3); letter-spacing: .1em; }
+@keyframes land { from { opacity: 0; transform: translateY(9px); } }
+@media (prefers-reduced-motion: reduce) { .plate { animation: none; } .dot.up { animation: none; } }
+
+/* failure ledger + root cause bars */
+.ledger { font-family: var(--mono); font-size: 13px; border-top: 1px solid var(--rule); margin-top: 6px; }
+.ledger .row {
+  display: grid; grid-template-columns: 12ch 11ch 1fr; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--rule); color: var(--ink-2);
+}
+.ledger .row b { color: var(--red); font-weight: 600; }
+.bars { margin-top: 20px; display: grid; gap: 9px; }
+.bar { display: grid; grid-template-columns: 13ch 1fr 6ch; gap: 12px; align-items: center; font-family: var(--mono); font-size: 13px; }
+.bar .track { height: 17px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
+.bar .fill { height: 100%; width: 0; background: var(--ink-3); border-radius: 2px; transition: width .7s cubic-bezier(.16,1,.3,1); }
+.bar.hit .fill { background: var(--orange); }
+.bar.hit .id { color: var(--orange); font-weight: 600; }
+.verdict {
+  display: none; margin-top: 22px; font-variation-settings: "wdth" 120; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .2em; font-size: 13px; color: var(--orange);
+  border: 2px solid var(--orange); padding: 10px 16px; width: fit-content; border-radius: 2px;
+  transform: rotate(-1.5deg);
+}
+
+/* recall reach */
+.reach { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 26px; margin-top: 18px; }
+.reach .big {
+  font-variation-settings: "wdth" 66; font-weight: 800; font-size: clamp(64px, 10vw, 128px);
+  line-height: .9; letter-spacing: -.01em; font-variant-numeric: tabular-nums;
+}
+.reach .unit-lbl { color: var(--ink-2); max-width: 22ch; font-size: 14.5px; line-height: 1.4; }
+
+/* colophon */
+footer {
+  margin-top: clamp(60px, 9vw, 110px); border-top: 3px solid var(--ink);
+  padding: 18px 0 46px; display: flex; flex-wrap: wrap; gap: 10px 36px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2); line-height: 1.9;
+}
+footer a { text-decoration-thickness: 1.5px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="docket">
+    <span class="no">DIGITAL THREAD · DT-2026-001</span>
+    <span>FAA registry · Service Difficulty Reports · Airworthiness Directives</span>
+    <span class="live"><span class="dot" id="dot"></span><span id="sys">checking system…</span></span>
+  </div>
+
+  <header class="mast">
+    <div class="kicker">Vehicle-lifecycle knowledge graph</div>
+    <h1>Many messy sources in.<br>One graph that <em>answers back.</em></h1>
+    <p class="standfirst">Three federal data feeds describe the same physical aircraft in three
+    different vocabularies. This system resolves them into one governed Neo4j graph, grafts on an
+    as-built supply chain, and answers the two questions no single source can:
+    <strong>which aircraft does a defect reach</strong>, and <strong>what does a cluster of
+    failures have in common?</strong> Everything below runs live against the real database.</p>
+    <div class="mast-meta">
+      <span><b>176,826</b> nodes</span>
+      <span><b>187,073</b> relationships</span>
+      <span><b>73,158</b> real Cessna aircraft</span>
+      <span><b>3,891</b> real failure reports</span>
+      <span><b>2,004</b> real AD campaigns</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(a) THE MODEL</span>
+        <h2>Two edges carry the whole design</h2>
+        <p>A material defect travels the physical assembly tree. A design defect travels the
+        revision lineage. Two defect classes, two traversal directions.</p>
+      </aside>
+      <div class="body">
+        <div class="thread" aria-label="Graph traversal path">
+          <span class="n lot">LOT-00049</span><span class="e">←</span><span class="lbl">MADE_FROM</span><span class="e">—</span><span class="n unit">S-000074 ENGINE/PRIMARY</span><span class="e">←</span><span class="lbl">COMPOSED_OF</span><span class="e">—</span><span class="n unit">S-000073 ENGINE</span><br>
+          <span class="e">…</span><span class="e">←</span><span class="lbl">COMPOSED_OF</span><span class="e">—</span><span class="n unit">airframe 17265231</span><span class="e">—</span><span class="lbl">INSTALLED_IN</span><span class="e">→</span><span class="n asset">N478TW</span>
+        </div>
+        <p style="color:var(--ink-2); max-width:60ch">The registry contributes real airframes and a real
+        airframe-to-engine edge. Failure reports contribute real part serials. The supply-chain middle —
+        lots, suppliers, work orders — is synthetic by design, with a ground-truth manifest, because no
+        public source exposes it. That's what makes every number on this page checkable.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(b) BLAST RADIUS</span>
+        <h2>One bad batch. Which aircraft?</h2>
+        <p>Material lot <code>LOT-00049</code> — engine primaries, supplier SUP-11 — is declared
+        defective. The traversal climbs every assembly tree it touched. Ground truth says exactly
+        20 aircraft.</p>
+      </aside>
+      <div class="body">
+        <button class="stamp" id="run-blast">Execute traversal</button>
+        <div class="tty" id="tty-blast">standing by — first request may take a moment on the free tier</div>
+        <div class="manifest" id="manifest" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(c) ROOT CAUSE</span>
+        <h2>Nine failures. One common thread.</h2>
+        <p>Nine cracked engine primaries reported across the fleet in ten days. Walk each one back
+        down its physical tree and rank what they share.</p>
+      </aside>
+      <div class="body">
+        <div class="ledger" id="ledger"></div>
+        <button class="stamp" id="run-root" style="margin-top:22px">Trace to root cause</button>
+        <div class="tty" id="tty-root"></div>
+        <div class="bars" id="bars"></div>
+        <div class="verdict" id="verdict">Root cause · LOT-00049 · 9 of 9 events</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(d) THE REAL THING</span>
+        <h2>A real recall, measured from rule text</h2>
+        <p>Airworthiness Directive <code>2020-24046</code> names its affected models only in
+        Federal Register prose. Parsed, linked, and traversed against the live registry.</p>
+      </aside>
+      <div class="body">
+        <button class="stamp" id="run-recall">Measure the reach</button>
+        <div class="tty" id="tty-recall"></div>
+        <div class="reach" id="reach" style="display:none">
+          <span class="big" id="reach-n">0</span>
+          <span class="unit-lbl">registered aircraft reached by one directive, at any assembly depth —
+          counted live, not quoted</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Java 21 · Spring Boot · Neo4j 5 · GraphQL · Kafka ingestion · SHACL-gated loads</span>
+    <span><a href="/graphiql">Open the GraphiQL console</a> · <a href="https://github.com/kingl0w/digitalthread">Source on GitHub</a></span>
+    <span>Rate limited to 30 requests/min · supply-chain middle synthetic by design, rng seed 42, reproducible</span>
+  </footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const GQL = async (query) => {
+  const t0 = performance.now();
+  const r = await fetch('/graphql', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+  if (r.status === 429) throw new Error('rate limit reached — try again in a minute');
+  const j = await r.json();
+  if (j.errors) throw new Error(j.errors[0].message);
+  return { data: j.data, ms: Math.round(performance.now() - t0) };
+};
+const fail = (el, e) => { el.innerHTML = '<span class="err">— ' + e.message +
+  ' (free-tier instance may be waking up; give it a minute and retry)</span>'; };
+
+/* system status */
+fetch('/actuator/health').then(r => r.json()).then(h => {
+  const up = h.status === 'UP';
+  $('dot').className = 'dot ' + (up ? 'up' : 'down');
+  $('sys').textContent = up ? 'system operational' : 'database unreachable';
+}).catch(() => { $('dot').className = 'dot down'; $('sys').textContent = 'service waking up…'; });
+
+/* (b) blast radius */
+$('run-blast').onclick = async () => {
+  const btn = $('run-blast'), tty = $('tty-blast'), man = $('manifest');
+  btn.disabled = true; man.innerHTML = ''; tty.textContent = 'MATCH (:MaterialLot {id:"LOT-00049"})<-[:MADE_FROM]-(u)<-[:COMPOSED_OF*0..]-(root)-[:INSTALLED_IN]->(a) …';
+  try {
+    const { data, ms } = await GQL('{ blastRadiusByLot(lotId: "LOT-00049") { id nNumber yearMfr } }');
+    const fleet = data.blastRadiusByLot;
+    tty.innerHTML = '→ <b>' + fleet.length + ' aircraft</b> · ' + ms + ' ms · exact match against the ground-truth manifest';
+    fleet.forEach((a, i) => {
+      const p = document.createElement('div'); p.className = 'plate';
+      p.style.animationDelay = (i * 55) + 'ms';
+      p.innerHTML = a.id + '<small>' + (a.yearMfr ? 'MFR ' + a.yearMfr : 'FAA REGISTRY') + '</small>';
+      man.appendChild(p);
+    });
+  } catch (e) { fail(tty, e); }
+  btn.disabled = false;
+};
+
+/* (c) root cause */
+const EVENTS = Array.from({ length: 9 }, (_, i) => 'SEED-F-000' + (i + 1));
+$('ledger').innerHTML = EVENTS.map((id, i) =>
+  '<div class="row"><span>' + id + '</span><span>2022-06-0' + (i + 2) + '</span><span><b>CRACKED</b> · engine primary</span></div>').join('');
+$('run-root').onclick = async () => {
+  const btn = $('run-root'), tty = $('tty-root'), bars = $('bars');
+  btn.disabled = true; bars.innerHTML = ''; $('verdict').style.display = 'none';
+  tty.textContent = 'UNWIND events … MATCH (:FailureEvent)-[:ON_UNIT]->(u)-[:COMPOSED_OF*0..]->(leaf)-[:MADE_FROM]->(lot) …';
+  try {
+    const { data, ms } = await GQL('{ rootCause(eventIds: [' + EVENTS.map(e => '"' + e + '"').join(',') + ']) { lotId supplierId hits } }');
+    const ranked = data.rootCause.slice(0, 5);
+    const top = ranked[0];
+    tty.innerHTML = '→ ranked <b>' + data.rootCause.length + ' candidate lots</b> · ' + ms + ' ms';
+    ranked.forEach((l, i) => {
+      const hit = l.hits === EVENTS.length;
+      const b = document.createElement('div'); b.className = 'bar' + (hit ? ' hit' : '');
+      b.innerHTML = '<span class="id">' + l.lotId + '</span><div class="track"><div class="fill"></div></div><span>' + l.hits + '/9</span>';
+      bars.appendChild(b);
+      requestAnimationFrame(() => requestAnimationFrame(() =>
+        b.querySelector('.fill').style.width = (l.hits / EVENTS.length * 100) + '%'));
+    });
+    if (top && top.hits === EVENTS.length) setTimeout(() => $('verdict').style.display = 'block', 750);
+  } catch (e) { fail(tty, e); }
+  btn.disabled = false;
+};
+
+/* (d) real recall */
+$('run-recall').onclick = async () => {
+  const btn = $('run-recall'), tty = $('tty-recall');
+  btn.disabled = true;
+  tty.textContent = 'MATCH (:Campaign {id:"2020-24046"})-[:AFFECTS]->(:Revision)<-[:BUILT_TO]-(u) … counting the whole fleet, this one is heavier';
+  try {
+    const { data, ms } = await GQL('{ blastRadiusByCampaign(campaignId: "2020-24046") { id } }');
+    const n = data.blastRadiusByCampaign.length;
+    tty.innerHTML = '→ counted <b>' + n.toLocaleString() + '</b> distinct registered aircraft · ' + ms + ' ms';
+    const el = $('reach'); el.style.display = 'flex';
+    const target = n, t0 = performance.now(), D = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 900;
+    (function tick() {
+      const k = D ? Math.min(1, (performance.now() - t0) / D) : 1;
+      $('reach-n').textContent = Math.round(target * (1 - Math.pow(1 - k, 4))).toLocaleString();
+      if (k < 1) requestAnimationFrame(tick);
+    })();
+  } catch (e) { fail(tty, e); }
+  btn.disabled = false;
+};
+</script>
+</body>
+</html>
