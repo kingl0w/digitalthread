@@ -2,10 +2,6 @@
 
 Many messy sources in, one coherent graph out.
 
-**Live demo:** [https://digital-thread-query.onrender.com/graphiql](https://digital-thread-query.onrender.com/graphiql)
-— GraphiQL over the real graph (176,826 nodes). Free-tier hosting; first request after a deploy
-may take a minute.
-
 This is a Java microservices system that ingests fragmented public aircraft-lifecycle data —
 the FAA aircraft registry, Airworthiness Directives, Service Difficulty Reports — resolves it
 into a single governed Neo4j knowledge graph, and answers two questions no single source can:
