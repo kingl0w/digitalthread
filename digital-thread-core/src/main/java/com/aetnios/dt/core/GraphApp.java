@@ -32,11 +32,18 @@ public class GraphApp {
         String pass = System.getProperty("neo4j.pass", "digitalthread");
         Path canonical = Path.of(System.getProperty("canonical", "data/canonical"));
         Path seed = Path.of(System.getProperty("seed", "data/seed"));
+        if (!run(uri, user, pass, canonical, seed)) System.exit(1);
+    }
+
+    /** Validate, wipe, load, assert. Returns true iff SHACL and all money-query checks pass. */
+    public static boolean run(String uri, String user, String pass, Path canonical, Path seed) throws Exception {
+        if (!Shacl.validate(canonical, seed)) return false;
 
         try (Driver driver = GraphDatabase.driver(uri, AuthTokens.basic(user, pass));
              Session session = driver.session()) {
 
-            session.run("MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume();
+            // scoped to :Node so this graph can share an instance (e.g. Aura Free) with others
+            session.run("MATCH (n:Node) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume();
             session.run("CREATE CONSTRAINT node_id IF NOT EXISTS FOR (n:Node) REQUIRE n.id IS UNIQUE").consume();
 
             for (Path dir : List.of(canonical, seed)) {
@@ -53,9 +60,10 @@ public class GraphApp {
             realRecalls(session);
             boolean ok = blastRadiusLot(session, gt)
                     & blastRadiusRevision(session, gt)
-                    & rootCause(session, gt);
+                    & rootCause(session, gt)
+                    & bitemporalCoverage(session);
             System.out.println(ok ? "MONEY QUERIES: BOTH PASS" : "MONEY QUERIES: FAILURE");
-            if (!ok) System.exit(1);
+            return ok;
         }
     }
 
@@ -72,6 +80,8 @@ public class GraphApp {
                 String k = it.next();
                 if (!k.equals("label") && !n.get(k).isNull()) props.put(k, n.get(k).asText());
             }
+            String validFrom = validFrom(n, label);
+            if (validFrom != null) props.put("validFrom", validFrom);
             rows.add(Map.of("id", n.path("id").asText(), "props", props));
             if (rows.size() >= BATCH) { total += flushNodes(session, label, rows); }
         }
@@ -79,10 +89,29 @@ public class GraphApp {
         System.out.printf("loaded %d %s from %s%n", total, label, file);
     }
 
+    /**
+     * Bitemporal stamps: recordedAt = when this system first wrote the fact (transaction time),
+     * validFrom = when the fact became true in the world (domain time, where a source carries one).
+     * validTo stays absent = still valid. ON CREATE keeps recordedAt stable across replays.
+     * ponytail: no supersession — validTo is never closed because no source emits corrections
+     * or retractions today; add close-out logic (SET old.validTo, create successor) when one does.
+     */
+    private static String validFrom(JsonNode n, String label) {
+        String field = switch (label) {
+            case "FailureEvent" -> "date";
+            case "Campaign" -> "publicationDate";
+            case "Asset" -> "airworthinessDate";
+            case "WorkOrder" -> "start";
+            default -> null;
+        };
+        return field == null ? null : Dates.toIso(n.path(field).asText(""));
+    }
+
     private static int flushNodes(Session session, String label, List<Map<String, Object>> rows) {
         int n = rows.size();
         session.executeWrite(tx -> tx.run(
-                "UNWIND $rows AS row MERGE (n:Node:" + label + " {id: row.id}) SET n += row.props",
+                "UNWIND $rows AS row MERGE (n:Node:" + label + " {id: row.id}) "
+                        + "ON CREATE SET n.recordedAt = datetime() SET n += row.props",
                 Map.of("rows", new ArrayList<>(rows))).consume());
         rows.clear();
         return n;
@@ -109,7 +138,7 @@ public class GraphApp {
             List<Map<String, Object>> batch = rows.subList(i, Math.min(i + BATCH, rows.size()));
             session.executeWrite(tx -> tx.run(
                     "UNWIND $rows AS row MATCH (a:Node {id: row.from}) MATCH (b:Node {id: row.to}) "
-                            + "MERGE (a)-[:" + type + "]->(b)",
+                            + "MERGE (a)-[r:" + type + "]->(b) ON CREATE SET r.recordedAt = datetime()",
                     Map.of("rows", new ArrayList<>(batch))).consume());
         }
         return rows.size();
@@ -179,6 +208,20 @@ public class GraphApp {
         boolean ok = !ranked.isEmpty() && ranked.get(0).startsWith(expectedLot + " (" + events.size() + ")");
         System.out.printf("%s root cause: cluster of %d -> %s, expected %s%n",
                 ok ? "PASS" : "FAIL", events.size(), ranked, expectedLot);
+        return ok;
+    }
+
+    /** Hardening check: every node and relationship carries transaction time. */
+    private static boolean bitemporalCoverage(Session session) {
+        long nodes = session.run("MATCH (n:Node) WHERE n.recordedAt IS NULL RETURN count(n) AS c")
+                .single().get("c").asLong();
+        long rels = session.run("MATCH (:Node)-[r]->(:Node) WHERE r.recordedAt IS NULL RETURN count(r) AS c")
+                .single().get("c").asLong();
+        long dated = session.run("MATCH (n:Node) WHERE n.validFrom IS NOT NULL RETURN count(n) AS c")
+                .single().get("c").asLong();
+        boolean ok = nodes == 0 && rels == 0;
+        System.out.printf("%s bitemporality: %d nodes / %d rels missing recordedAt, %d nodes carry validFrom%n",
+                ok ? "PASS" : "FAIL", nodes, rels, dated);
         return ok;
     }
 

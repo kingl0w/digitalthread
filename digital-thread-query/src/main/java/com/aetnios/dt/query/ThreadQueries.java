@@ -1,9 +1,12 @@
 package com.aetnios.dt.query;
 
+import graphql.GraphQLError;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.GraphQlExceptionHandler;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.execution.ErrorType;
 import org.springframework.stereotype.Controller;
 
 import java.util.List;
@@ -91,11 +94,18 @@ public class ThreadQueries {
 
     @QueryMapping
     public List<LotScore> rootCause(@Argument List<String> eventIds) {
+        // public endpoint: the id list is the one input a caller can scale up arbitrarily
+        if (eventIds.size() > 100) throw new IllegalArgumentException("at most 100 eventIds");
         try (Session session = driver.session()) {
             return session.run(ROOT_CAUSE, Map.of("events", eventIds))
                     .list(r -> new LotScore(r.get("lotId").asString(),
                             r.get("supplierId").asString(null), r.get("hits").asInt()));
         }
+    }
+
+    @GraphQlExceptionHandler
+    public GraphQLError badInput(IllegalArgumentException e) {
+        return GraphQLError.newError().errorType(ErrorType.BAD_REQUEST).message(e.getMessage()).build();
     }
 
     private List<Asset> assets(String cypher, String id) {

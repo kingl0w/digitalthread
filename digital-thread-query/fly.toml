@@ -1,0 +1,33 @@
+# Public read-only demo of the digital-thread query service, backed by Neo4j AuraDB.
+# Deploy: fly launch --copy-config --no-deploy && fly secrets set NEO4J_URI=... NEO4J_USER=... NEO4J_PASSWORD=... && fly deploy
+app = "digital-thread-query"
+primary_region = "sea"
+
+[build]
+
+[env]
+  # demo exposure: health only; metrics stay private
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE = "health"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"    # scale to zero when idle; cold start ~15s
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 50
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "30s"
+  method = "GET"
+  path = "/actuator/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

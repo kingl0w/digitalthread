@@ -1,0 +1,20 @@
+# Public read-only demo of the digital-thread query service, backed by Neo4j AuraDB.
+# Deploy: connect this repo at https://dashboard.render.com (New > Blueprint),
+# then set the NEO4J_* env vars in the dashboard — never commit them.
+services:
+  - type: web
+    name: digital-thread-query
+    runtime: docker
+    plan: free
+    dockerfilePath: digital-thread-query/Dockerfile
+    dockerContext: digital-thread-query
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+        value: health
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false

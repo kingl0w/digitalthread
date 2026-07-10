@@ -1,0 +1,52 @@
+# The digital-thread schema, formalized. Every label's required properties and every
+# edge's endpoint types. GraphApp validates the canonical+seed zones against this
+# before loading Neo4j; a violation (missing identity, dangling edge, edge into the
+# wrong node type) fails the load.
+@prefix sh:  <http://www.w3.org/ns/shacl#> .
+@prefix dt:  <urn:dt:> .
+
+dt:AssetShape a sh:NodeShape ;
+  sh:targetClass dt:Asset ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:nNumber ; sh:minCount 1 ] .
+
+dt:SerializedUnitShape a sh:NodeShape ;
+  sh:targetClass dt:SerializedUnit ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:kind ; sh:minCount 1 ] ;
+  sh:property [ sh:path dt:BUILT_TO ; sh:class dt:Revision ] ;        # design lineage
+  sh:property [ sh:path dt:COMPOSED_OF ; sh:class dt:SerializedUnit ] ;  # physical lineage
+  sh:property [ sh:path dt:MADE_FROM ; sh:class dt:MaterialLot ] ;
+  sh:property [ sh:path dt:INSTALLED_IN ; sh:class dt:Asset ] ;
+  sh:property [ sh:path dt:PRODUCED_BY ; sh:class dt:WorkOrder ] .
+
+dt:RevisionShape a sh:NodeShape ;
+  sh:targetClass dt:Revision ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:kind ; sh:minCount 1 ] ;
+  sh:property [ sh:path dt:SUPERSEDED_BY ; sh:class dt:Revision ] .
+
+dt:MaterialLotShape a sh:NodeShape ;
+  sh:targetClass dt:MaterialLot ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:SUPPLIED_BY ; sh:class dt:Supplier ] .
+
+dt:SupplierShape a sh:NodeShape ;
+  sh:targetClass dt:Supplier ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+dt:WorkOrderShape a sh:NodeShape ;
+  sh:targetClass dt:WorkOrder ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:workCenter ; sh:minCount 1 ] .
+
+dt:CampaignShape a sh:NodeShape ;
+  sh:targetClass dt:Campaign ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:AFFECTS ; sh:class dt:Revision ] .
+
+dt:FailureEventShape a sh:NodeShape ;
+  sh:targetClass dt:FailureEvent ;
+  sh:property [ sh:path dt:id ; sh:minCount 1 ; sh:maxCount 1 ] ;
+  sh:property [ sh:path dt:date ; sh:minCount 1 ] ;
+  sh:property [ sh:path dt:source ; sh:minCount 1 ] .
