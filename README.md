@@ -2,6 +2,10 @@
 
 Many messy sources in, one coherent graph out.
 
+**Live demo:** [https://digital-thread-query.onrender.com/graphiql](https://digital-thread-query.onrender.com/graphiql)
+— GraphiQL over the real graph (176,826 nodes). Free-tier hosting; first request after a deploy
+may take a minute.
+
 This is a Java microservices system that ingests fragmented public aircraft-lifecycle data —
 the FAA aircraft registry, Airworthiness Directives, Service Difficulty Reports — resolves it
 into a single governed Neo4j knowledge graph, and answers two questions no single source can:
@@ -195,28 +199,32 @@ Replay converges to the exact baseline; a duplicate replay changes nothing (176,
 
 ## Hosting the public demo
 
-Only the read surface is hosted; ingest/Kafka stay local. The graph fits Neo4j AuraDB Free
-(200k nodes / 400k rels), and the query service deploys to Fly.io from
-[`digital-thread-query/Dockerfile`](digital-thread-query/Dockerfile) +
-[`fly.toml`](digital-thread-query/fly.toml).
+Only the read surface is hosted; ingest/Kafka stay local. The graph lives in Neo4j AuraDB Free
+(fits the 200k-node cap at 176,826), and the query service runs on Render's free tier from
+[`digital-thread-query/Dockerfile`](digital-thread-query/Dockerfile), declared in
+[`render.yaml`](render.yaml). (A [`fly.toml`](digital-thread-query/fly.toml) is kept for
+deploying to Fly.io instead.)
 
 ```bash
-# 1. Create a free instance at console.neo4j.io, then load it (a few minutes over the wire):
+# 1. Create a free instance at console.neo4j.io, then load it (a few minutes over the wire).
+#    The loader runs SHACL, both money queries, and the bitemporal checks against the target:
 cd digital-thread-core
 mvn -q compile exec:java -Dapp.main=com.aetnios.dt.core.GraphApp \
   -Dneo4j.uri="neo4j+s://<id>.databases.neo4j.io" -Dneo4j.user=neo4j -Dneo4j.pass="<password>"
 
-# 2. Deploy the query service:
-cd ../digital-thread-query
-fly launch --copy-config --no-deploy
-fly secrets set NEO4J_URI="neo4j+s://<id>.databases.neo4j.io" NEO4J_USER=neo4j NEO4J_PASSWORD="<password>"
-fly deploy
+# 2. Deploy the query service: at dashboard.render.com choose New > Blueprint and connect this
+#    repo — render.yaml declares the service; enter NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD
+#    when prompted. Deploys re-run on every push.
 ```
 
+Render's free tier sleeps after 15 idle minutes, but grants 750 instance-hours a month — enough
+to run 24/7 — so a scheduled GitHub Action
+([`.github/workflows/keep-warm.yml`](.github/workflows/keep-warm.yml)) pings the health endpoint
+every 10 minutes to keep the JVM warm.
+
 Abuse guards baked in: per-client rate limit (30 req/min), `rootCause` capped at 100 event ids,
-actuator restricted to `/actuator/health` in the deployed config, Fly concurrency limits, and
-scale-to-zero when idle. The Aura credentials live only in Fly secrets; the database itself is
-never publicly reachable.
+and actuator restricted to `/actuator/health` in the deployed config. The Aura credentials live
+only in Render environment variables; the database itself is never publicly reachable.
 
 ## Invariants
 

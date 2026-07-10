@@ -107,47 +107,31 @@ coverage staying total across consumer writes.
 Interactive demo artifact (claude.ai, update by republishing the same file):
 https://claude.ai/code/artifact/35e308e1-fd64-4f3d-a1d5-05ee60a0960b
 
-## Hosted demo (in progress — the pickup point)
-Decision: public always-on demo = Neo4j AuraDB Free + digital-thread-query on Fly.io. Only the
-read surface is hosted; ingest/Kafka stay local. Graph fits Aura Free (176,826 nodes of the
-200k cap). MUST stay separate from the user's other Aura Free instance a69394ca
-("pharma-supply-graph", different project, same Downloads folder) — do NOT load into it; a
-second free account was created for this project instead.
+## Hosted demo (LIVE as of 2026-07-10)
+Public URL: https://digital-thread-query.onrender.com (GraphiQL at /graphiql). Stack changed
+from Fly.io to Render free tier — Fly requires a card, Render doesn't. fly.toml is kept as an
+alternative but render.yaml (repo root) is the deployed config.
 
-Already done and verified locally:
-- Query service hardened for public exposure: RateLimitFilter (30 req/min per client,
-  X-Forwarded-For aware), rootCause capped at 100 eventIds with a clean BAD_REQUEST error
-  (rootCause return type made nullable in schema.graphqls so the cap error isn't followed by
-  non-null noise).
-- digital-thread-query/Dockerfile (multi-stage, build validated) and fly.toml (health check on
-  /actuator/health, scale-to-zero, concurrency caps, actuator restricted to health via env).
-- GraphApp wipe + bitemporal checks are scoped to :Node, so loading into a shared instance
-  cannot touch foreign data (belt-and-braces even though we're not sharing).
-- README section "Hosting the public demo" has the exact load + deploy commands.
+- Neo4j AuraDB Free instance b28b1ca7 (name digital_thread, second free account; creds in
+  Neo4j-b28b1ca7-Created-2026-07-10.txt in the Windows Downloads folder — never commit them).
+  Loaded and verified in place: SHACL 0 violations, blast radius 20/20 and 17/17, root cause
+  LOT-00049 9/9, AD 2020-24046 = 6,393, full bitemporal coverage. MUST stay separate from the
+  user's other Aura Free instance a69394ca ("pharma-supply-graph", different project).
+- Code on GitHub: https://github.com/kingl0w/digitalthread (public, master). Render deploys it
+  as a Blueprint (render.yaml) on every push; NEO4J_* secrets live in Render env vars.
+- Smoke-tested on the public URL: blastRadiusByLot(LOT-00049) 20 assets, rootCause 9/9 hits on
+  LOT-00049, blastRadiusByCampaign(2020-24046) 6,393, 429 after the 30 req/min window.
+- Cold starts: Render free sleeps after 15 idle min; .github/workflows/keep-warm.yml pings
+  /actuator/health every 10 min (750 free h/mo covers 24/7). GitHub disables the schedule after
+  60 days of repo inactivity — re-enable from the Actions tab if the demo goes cold.
+- Bug found during deploy: digital-thread-query/pom.xml lacked spring-boot-maven-plugin, so
+  `mvn package` produced a plain jar ("no main manifest attribute" at runtime). Only
+  spring-boot:run had ever exercised it. Fixed; the runtime smoke check (not just the build) is
+  the lesson.
+- Query field names for smoke tests: Asset exposes `id` (not assetId), LotScore exposes `hits`
+  (not eventCount).
 
-Blocked on: Aura instance b28b1ca7 (name digital_thread, user neo4j, creds file
-Neo4j-b28b1ca7-Created-2026-07-10.txt in the Windows Downloads folder) stuck in "Creating" —
-its DNS record never appeared. Root cause: Aura provisioning incident on 2026-07-10 (status page
-confirmed a third-party dependency failure ~17:18-17:51 UTC, exactly our window). Incident is
-resolved but the instance hadn't recovered as of pausing.
-
-To resume, in order:
-1. Check console.neo4j.io (second account): if b28b1ca7 is Running, proceed. If still stuck in
-   Creating, delete it and create a fresh free instance (should provision in 2-5 min now that
-   the incident is over); a new Neo4j-*-Created-*.txt lands in Downloads.
-2. Load Aura (from digital-thread-core; creds from the Downloads file — never commit them):
-   mvn -q compile exec:java -Dapp.main=com.aetnios.dt.core.GraphApp \
-     -Dneo4j.uri="neo4j+s://<id>.databases.neo4j.io" -Dneo4j.user=neo4j -Dneo4j.pass="<pw>"
-   It runs SHACL + money queries + bitemporal checks against Aura itself; expect all PASS.
-3. Deploy (from digital-thread-query; needs `fly auth login` first):
-   fly launch --copy-config --no-deploy
-   fly secrets set NEO4J_URI=... NEO4J_USER=neo4j NEO4J_PASSWORD=...
-   fly deploy
-4. Smoke-test the public URL: blastRadiusByLot(LOT-00049) = 20 assets, rootCause(SEED-F-0001..9)
-   = LOT-00049 9/9, blastRadiusByCampaign(2020-24046) = 6,393; confirm 429 after 30 req/min.
-5. Put the public GraphiQL link in the README, republish the demo artifact.
-
-Next up after the hosted demo:
+Next up:
 1. Deferred refinements: AD serial-range applicability (model-level only today), SDR grid pager
    (monthly windows assumed to fit one page), FailureEvent id collisions across SDR rows sharing
    an OperatorControlNumber, query-service tests, validTo supersession (nothing closes validity

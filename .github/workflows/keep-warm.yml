@@ -1,0 +1,14 @@
+# Render's free tier sleeps after 15 idle minutes; its 750 free hours/month cover 24/7,
+# so pinging health every 10 minutes keeps the JVM warm at zero cost.
+# Note: GitHub disables this schedule after 60 days without repo activity — re-enable from the
+# Actions tab if the demo goes cold.
+name: keep-warm
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sf -m 90 https://digital-thread-query.onrender.com/actuator/health
