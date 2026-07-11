@@ -1,14 +1,27 @@
-# Render's free tier sleeps after 15 idle minutes; its 750 free hours/month cover 24/7,
-# so pinging health every 10 minutes keeps the JVM warm at zero cost.
+# Render's free tier sleeps after 15 idle minutes. GitHub throttles cron schedules to roughly
+# hourly regardless of what you ask for, so a bare */10 ping leaves the demo cold most of the
+# time. Instead each run loops for ~55 minutes pinging every 5, covering the gap until the next
+# scheduled run fires. Actions minutes are unlimited on public repos, so this costs nothing.
 # Note: GitHub disables this schedule after 60 days without repo activity — re-enable from the
 # Actions tab if the demo goes cold.
 name: keep-warm
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * * *" # fires ~hourly in practice; the in-run loop does the real work
   workflow_dispatch:
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 58
     steps:
-      - run: curl -sf -m 90 https://digital-thread-query.onrender.com/actuator/health
+      # -m 180: a cold start needs well over the old 90s; --retry rides out transient failures
+      - run: |
+          for i in $(seq 1 11); do
+            curl -sf -m 180 --retry 3 --retry-all-errors \
+              https://digital-thread-query.onrender.com/actuator/health \
+              && echo "ping $i ok" || echo "ping $i failed"
+            [ "$i" -lt 11 ] && sleep 300
+          done
