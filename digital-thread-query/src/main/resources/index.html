@@ -484,9 +484,17 @@ function renderGraph(el, g) {
     .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 40); fitRes(); } })
     .onNodeClick(n => expand(fg, n));
   fg._el = el;
+  fg._orig = g; // pristine subgraph, so expansions can be undone wholesale
   fg._fit = new Promise(r => fitRes = r); // animations wait for the first zoom-to-fit
   graphs.push(fg);
   return fg;
+}
+
+/* undo all expansions: back to the subgraph the query returned */
+function reset(fg) {
+  fg.graphData({ nodes: fg._orig.nodes.map(n => ({ ...n })), links: fg._orig.links.map(l => ({ ...l })) });
+  fg._tty.innerHTML = '→ back to the original subgraph';
+  setTimeout(() => fg.zoomToFit(400, 40), 600);
 }
 
 /* click-to-explore: pull one hop of live context into the picture */
@@ -502,10 +510,15 @@ async function expand(fg, node) {
     const links = data.neighbors.links.filter(l => !seen.has(lkey(l))).map(l => ({ ...l }));
     if (nodes.length || links.length) {
       fg.graphData({ nodes: [...cur.nodes, ...nodes], links: [...cur.links, ...links] });
+      fg._dirty = true;
       fg._tty.innerHTML = '→ <b>' + node.id + '</b>: pulled in ' + nodes.length + ' new node' + (nodes.length === 1 ? '' : 's') +
         ' and ' + links.length + ' edge' + (links.length === 1 ? '' : 's');
     } else {
       fg._tty.innerHTML = '→ <b>' + node.id + '</b>: its whole one-hop neighborhood is already on screen — try the lot, a unit, or zoom in';
+    }
+    if (fg._dirty) {
+      fg._tty.insertAdjacentHTML('beforeend', ' · <a href="#" data-reset>reset view</a>');
+      fg._tty.querySelector('[data-reset]').onclick = ev => { ev.preventDefault(); fg._dirty = false; reset(fg); };
     }
   } catch (e) { fail(fg._tty, e); }
 }
