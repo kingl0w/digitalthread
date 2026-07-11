@@ -124,7 +124,10 @@ alternative but render.yaml (repo root) is the deployed config.
 - Landing page: / serves a live showcase (src/main/resources/index.html, served by
   GraphiqlPage) that runs the money queries against /graphql on button press; GraphiQL moved to
   a pinned-CDN page after Spring's bundled one broke on unpkg CORS. Design context for future
-  design work is in .impeccable.md.
+  design work is in .impeccable.md. Section (c) draws the blast-radius subgraph live
+  (blastRadiusGraph field returns nodes+links; force-graph 1.45.0 pinned on jsdelivr; node
+  labels must filter out the shared :Node index label; canvas palette is JS-side because
+  canvas can't resolve light-dark()).
 - Code on GitHub: https://github.com/kingl0w/digitalthread (public, master). Render deploys it
   as a Blueprint (render.yaml) on every push; NEO4J_* secrets live in Render env vars.
 - Smoke-tested on the public URL: blastRadiusByLot(LOT-00049) 20 assets, rootCause 9/9 hits on
