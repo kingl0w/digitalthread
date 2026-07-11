@@ -95,6 +95,15 @@ section { padding: clamp(44px, 7vw, 84px) 0 0; }
   padding: 1px 5px; border-radius: 3px;
 }
 
+/* raw source excerpts (0) — verbatim fragments from the immutable raw zone */
+.docs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.doc { border: 1.6px solid var(--rule); border-radius: 3px; padding: 13px 16px 12px; min-width: 0; }
+.doc .src { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: var(--ink-3); text-transform: uppercase; }
+.doc pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.75; margin: 9px 0 0; color: var(--ink-2); overflow-x: auto; }
+.doc pre.wrap { white-space: pre-wrap; overflow-x: visible; }
+.doc mark { background: color-mix(in oklch, var(--orange) 22%, transparent); color: var(--ink); font-weight: 600; padding: 0 2px; border-radius: 2px; }
+.doc .note { font-size: 13px; color: var(--ink-3); margin: 9px 0 0; line-height: 1.5; }
+
 /* traversal line */
 .thread {
   font-family: var(--mono); font-size: clamp(11.5px, 1.4vw, 14px); line-height: 2.3;
@@ -104,6 +113,7 @@ section { padding: clamp(44px, 7vw, 84px) 0 0; }
 .thread .lot { border-color: var(--amber); color: var(--amber); }
 .thread .unit { border-color: var(--blue); color: var(--blue); }
 .thread .asset { border-color: var(--green); color: var(--green); }
+.thread .fail { border-color: var(--red); color: var(--red); }
 .thread .e { color: var(--ink-3); padding: 0 2px; letter-spacing: -.05em; }
 .thread .lbl { color: var(--ink-3); font-size: .82em; }
 
@@ -214,6 +224,52 @@ footer a { text-decoration-thickness: 1.5px; }
       <span><b>2,004</b> real AD campaigns</span>
     </div>
   </header>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(0) THE RAW FEEDS</span>
+        <h2>One airplane. Three spellings.</h2>
+        <p>N46300, a 1973 Cessna 180J, exactly as the three feeds publish it — fragments below are
+        verbatim from the raw zone. No shared key. Building one is the whole job.</p>
+      </aside>
+      <div class="body">
+        <div class="docs">
+          <div class="doc">
+            <span class="src">FAA registry · MASTER.txt</span>
+            <pre>N-NUMBER,SERIAL NUMBER,MFR MDL CODE,ENG MFR MDL,YEAR MFR,…
+<mark>46300</mark>,<mark>18052413</mark>                      ,<mark>2072622</mark>,17026,1973,…</pre>
+            <p class="note">No manufacturer, no model name. <code>2072622</code> decodes to
+            "CESSNA 180J" only through a second lookup file.</p>
+          </div>
+          <div class="doc">
+            <span class="src">Federal Register · AD 2020-24046</span>
+            <pre class="wrap">"This AD applies to <mark>Textron Aviation Inc.</mark> (type certificate previously held by <mark>Cessna Aircraft Company</mark>) Models 180, 180A, 180B, 180C, 180D, 180E, 180F, 180G, 180H, <mark>180J</mark>, 180K, 182, 182A, … airplanes, all serial numbers, certificated in any category."</pre>
+            <p class="note">A different company name and a free-text model list, in regulation
+            prose. Not one code, serial, or N-number.</p>
+          </div>
+          <div class="doc">
+            <span class="src">Service Difficulty Report · 6MXR201811050473</span>
+            <pre>RegistryNNumber       <mark>46300</mark>
+AircraftMake          <mark>CESSNA</mark>
+AircraftModel         <mark>180J</mark>
+AircraftSerialNumber  <mark>18052413</mark>
+JASCCode              5510
+PartCondition         CRACKED · HORIZONTAL STAB</pre>
+            <p class="note">A third vocabulary: make and model as typed text, JASC component
+            codes, and the N-number missing its N.</p>
+          </div>
+        </div>
+        <div class="thread" aria-label="Resolved identity">
+          <span class="n fail">SDR 6MXR…0473</span><span class="e">—</span><span class="lbl">ON_UNIT</span><span class="e">→</span><span class="n unit">airframe 18052413</span><span class="e">—</span><span class="lbl">INSTALLED_IN</span><span class="e">→</span><span class="n asset">N46300</span><br>
+          <span class="n">AD 2020-24046</span><span class="e">—</span><span class="lbl">AFFECTS</span><span class="e">→</span><span class="n">REV 180J</span><span class="e">←</span><span class="lbl">BUILT_TO</span><span class="e">—</span><span class="n unit">airframe 18052413</span>
+        </div>
+        <p style="color:var(--ink-2); max-width:60ch">Resolved: one airframe node. The registry
+        gave it its tail number, the directive reaches it through its design revision, and the
+        failure report hangs off it. Every query below depends on this reconciliation.</p>
+      </div>
+    </div>
+  </section>
 
   <section>
     <div class="para">
