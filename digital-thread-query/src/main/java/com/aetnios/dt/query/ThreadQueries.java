@@ -86,11 +86,46 @@ public class ThreadQueries {
             LIMIT 2000
             """;
 
+    // the root-cause walk with its paths kept: every candidate lot stays visible, so the one
+    // reached by all events stands out against the ones reached by few
+    private static final String ROOT_GRAPH = """
+            MATCH p = (f:FailureEvent)-[:ON_UNIT]->(:SerializedUnit)-[:COMPOSED_OF*0..]->(:SerializedUnit)-[:MADE_FROM]->(:MaterialLot)
+            WHERE f.id IN $events
+            UNWIND relationships(p) AS r
+            WITH DISTINCT r
+            RETURN startNode(r).id AS src, [l IN labels(startNode(r)) WHERE l <> 'Node'][0] AS srcLabel,
+                   endNode(r).id AS dst, [l IN labels(endNode(r)) WHERE l <> 'Node'][0] AS dstLabel, type(r) AS type
+            LIMIT 2000
+            """;
+
+    // one hop in any direction; LIMIT guards high-degree nodes (a Revision touches thousands of units)
+    private static final String NEIGHBORS = """
+            MATCH (n:Node {id: $id})-[r]-()
+            WITH DISTINCT r LIMIT 200
+            RETURN startNode(r).id AS src, [l IN labels(startNode(r)) WHERE l <> 'Node'][0] AS srcLabel,
+                   endNode(r).id AS dst, [l IN labels(endNode(r)) WHERE l <> 'Node'][0] AS dstLabel, type(r) AS type
+            """;
+
     @QueryMapping
     public Subgraph blastRadiusGraph(@Argument String lotId) {
+        return subgraph(BLAST_GRAPH, Map.of("id", lotId));
+    }
+
+    @QueryMapping
+    public Subgraph rootCauseGraph(@Argument List<String> eventIds) {
+        if (eventIds.size() > 100) throw new IllegalArgumentException("at most 100 eventIds");
+        return subgraph(ROOT_GRAPH, Map.of("events", eventIds));
+    }
+
+    @QueryMapping
+    public Subgraph neighbors(@Argument String id) {
+        return subgraph(NEIGHBORS, Map.of("id", id));
+    }
+
+    private Subgraph subgraph(String cypher, Map<String, Object> params) {
         try (Session session = driver.session()) {
             var nodes = new java.util.LinkedHashMap<String, GraphNode>();
-            List<GraphLink> links = session.run(BLAST_GRAPH, Map.of("id", lotId)).list(r -> {
+            List<GraphLink> links = session.run(cypher, params).list(r -> {
                 String src = r.get("src").asString(), dst = r.get("dst").asString();
                 nodes.putIfAbsent(src, new GraphNode(src, r.get("srcLabel").asString()));
                 nodes.putIfAbsent(dst, new GraphNode(dst, r.get("dstLabel").asString()));

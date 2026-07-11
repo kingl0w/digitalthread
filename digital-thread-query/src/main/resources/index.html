@@ -151,6 +151,7 @@ section { padding: clamp(44px, 7vw, 84px) 0 0; }
 .sw-lot   { background: light-dark(#ad7300, #b88513); }
 .sw-unit  { background: light-dark(#2e64a6, #548bd0); }
 .sw-asset { background: light-dark(#0f825e, #1ea87b); }
+.sw-fail  { background: light-dark(#c92f33, #dd5652); }
 
 /* failure ledger + root cause bars */
 .ledger { font-family: var(--mono); font-size: 13px; border-top: 1px solid var(--rule); margin-top: 6px; }
@@ -257,9 +258,10 @@ footer a { text-decoration-thickness: 1.5px; }
       <aside>
         <span class="mark">(c) THE GRAPH ITSELF</span>
         <h2>Same traversal, drawn live</h2>
-        <p>The blast radius as the database sees it: <code>LOT-00049</code> at the center, every
-        assembly path climbing to a registered aircraft. Drag nodes, scroll to zoom, hover for
-        identities.</p>
+        <p>The blast radius as the database sees it: <code>LOT-00049</code> at the center, and the
+        defect propagating outward hop by hop until every reachable aircraft is ringed. Drag
+        nodes, scroll to zoom — and click any node to pull its live neighborhood into the
+        picture: suppliers, revisions, failure history.</p>
       </aside>
       <div class="body">
         <button class="stamp" id="run-graph">Draw the subgraph</button>
@@ -288,6 +290,14 @@ footer a { text-decoration-thickness: 1.5px; }
         <div class="tty" id="tty-root"></div>
         <div class="bars" id="bars"></div>
         <div class="verdict" id="verdict">Root cause · LOT-00049 · 9 of 9 events</div>
+        <button class="stamp" id="run-root-graph" style="margin-top:26px">Trace it on the graph</button>
+        <div class="tty" id="tty-root-graph"></div>
+        <div class="viz" id="viz-root" aria-label="Interactive root-cause subgraph"></div>
+        <div class="key" id="viz-root-key">
+          <span><span class="sw sw-fail"></span>Failure event</span>
+          <span><span class="sw sw-unit"></span>Serialized unit</span>
+          <span><span class="sw sw-lot"></span>Material lot</span>
+        </div>
       </div>
     </div>
   </section>
@@ -359,57 +369,174 @@ $('run-blast').onclick = async () => {
   btn.disabled = false;
 };
 
-/* (c) the live subgraph */
+/* (c)+(d) live subgraphs: shared renderer, defect-propagation animation, click-to-explore */
 const DARKQ = matchMedia('(prefers-color-scheme: dark)');
-// same hues as the legend swatches; canvas can't resolve light-dark(), so pick in JS
+// dataviz-validated canvas palette (canvas can't resolve CSS light-dark(), so pick in JS)
 const PAL = {
   light: { MaterialLot: '#ad7300', SerializedUnit: '#2e64a6', Asset: '#0f825e',
-           link: 'rgba(80,84,98,.30)', ink: '#1c222b', muted: '#474d57' },
+           FailureEvent: '#c92f33', Revision: '#6b46a0', other: '#84837d',
+           link: 'rgba(80,84,98,.30)', ink: '#1c222b', muted: '#474d57', hit: '#c92f33' },
   dark:  { MaterialLot: '#b88513', SerializedUnit: '#548bd0', Asset: '#1ea87b',
-           link: 'rgba(190,196,212,.30)', ink: '#eae7e2', muted: '#b4b1aa' },
+           FailureEvent: '#dd5652', Revision: '#9470cd', other: '#7d7f86',
+           link: 'rgba(190,196,212,.30)', ink: '#eae7e2', muted: '#b4b1aa', hit: '#dd5652' },
 };
-const NODE_VAL = n => n.label === 'MaterialLot' ? 7 : n.label === 'Asset' ? 3 : 1.5;
 const pal = () => PAL[DARKQ.matches ? 'dark' : 'light'];
-let fg = null;
-DARKQ.addEventListener('change', () => fg && fg.nodeColor(fg.nodeColor())); // poke a redraw
-addEventListener('resize', () => fg && fg.width($('viz').clientWidth));
+const VAL = { MaterialLot: 7, Asset: 3, FailureEvent: 3, Revision: 3 };
+const NODE_VAL = n => VAL[n.label] || 1.5;
+const SUBQ = '{ nodes { id label } links { source target type } }';
+const graphs = [];
+DARKQ.addEventListener('change', () => graphs.forEach(fg => fg.nodeColor(fg.nodeColor()))); // poke redraws
+addEventListener('resize', () => graphs.forEach(fg => fg.width(fg._el.clientWidth)));
+
+function renderGraph(el, g) {
+  el.style.display = 'block';
+  let fitted = false, fitRes;
+  const fg = ForceGraph()(el)
+    .width(el.clientWidth).height(el.clientHeight)
+    .graphData({ nodes: g.nodes.map(n => ({ ...n })), links: g.links.map(l => ({ ...l })) })
+    .nodeVal(NODE_VAL) // keeps the default hover hit area matched to the drawn dot
+    .nodeCanvasObject((n, ctx, scale) => {
+      const c = pal(), r = 4 * Math.sqrt(NODE_VAL(n));
+      ctx.fillStyle = c[n.label] || c.other;
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI); ctx.fill();
+      if (n.hit) { // the propagation wave has reached this node
+        ctx.strokeStyle = c.hit; ctx.lineWidth = 2 / scale;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 3 / scale, 0, 2 * Math.PI); ctx.stroke();
+      }
+      if (n.win) { // root-cause verdict ring
+        ctx.strokeStyle = c.hit; ctx.lineWidth = 3 / scale;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 8 / scale, 0, 2 * Math.PI); ctx.stroke();
+      }
+      if (n.label === 'SerializedUnit' && scale < 2.2) return; // unit ids only once zoomed
+      ctx.font = (n.label === 'MaterialLot' ? '600 ' : '') + (11 / scale) + 'px "Spline Sans Mono", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = c.ink;
+      ctx.fillText(n.id, n.x, n.y + r + 3 / scale);
+    })
+    .nodeLabel(n => n.id + ' · ' + n.label + ' — click to expand')
+    .linkColor(l => l.lit ? pal().hit : pal().link)
+    .linkWidth(l => l.lit ? 1.5 : 1)
+    .linkLabel(l => l.type)
+    .linkCanvasObjectMode(() => 'after')
+    .linkCanvasObject((l, ctx, scale) => {
+      if (scale < 1.8) return;
+      ctx.font = (9 / scale) + 'px "Spline Sans Mono", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal().muted;
+      ctx.fillText(l.type, (l.source.x + l.target.x) / 2, (l.source.y + l.target.y) / 2);
+    })
+    .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+    .cooldownTime(4000) // small graphs settle fast; default 15s delays the zoom-to-fit
+    .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 40); fitRes(); } })
+    .onNodeClick(n => expand(fg, n));
+  fg._el = el;
+  fg._fit = new Promise(r => fitRes = r); // animations wait for the first zoom-to-fit
+  graphs.push(fg);
+  return fg;
+}
+
+/* click-to-explore: pull one hop of live context into the picture */
+async function expand(fg, node) {
+  try {
+    const { data } = await GQL('{ neighbors(id: ' + JSON.stringify(node.id) + ') ' + SUBQ + ' }');
+    const cur = fg.graphData();
+    const have = new Set(cur.nodes.map(n => n.id));
+    const lkey = l => (l.source.id || l.source) + '>' + (l.target.id || l.target) + '>' + l.type;
+    const seen = new Set(cur.links.map(lkey));
+    const nodes = data.neighbors.nodes.filter(n => !have.has(n.id))
+      .map(n => ({ ...n, x: node.x + (Math.random() - .5) * 30, y: node.y + (Math.random() - .5) * 30 }));
+    const links = data.neighbors.links.filter(l => !seen.has(lkey(l))).map(l => ({ ...l }));
+    if (nodes.length || links.length) fg.graphData({ nodes: [...cur.nodes, ...nodes], links: [...cur.links, ...links] });
+  } catch (e) { fail(fg._tty, e); }
+}
+
+/* defect propagation: a timed BFS wave over the drawn subgraph */
+function propagate(fg, seeds, { directed = false, onHit, onDone } = {}) {
+  const { nodes, links } = fg.graphData();
+  nodes.forEach(n => { n.hit = false; n.win = false; });
+  links.forEach(l => { l.lit = false; });
+  const adj = new Map(nodes.map(n => [n, []]));
+  links.forEach(l => {
+    adj.get(l.source).push({ m: l.target, l });
+    if (!directed) adj.get(l.target).push({ m: l.source, l });
+  });
+  let frontier = seeds.filter(Boolean);
+  frontier.forEach(n => { n.hit = true; onHit && onHit(n); });
+  const timer = setInterval(() => {
+    const next = [];
+    frontier.forEach(n => adj.get(n).forEach(({ m, l }) => {
+      l.lit = true;
+      if (!m.hit) { m.hit = true; next.push(m); onHit && onHit(m); }
+    }));
+    fg.linkWidth(fg.linkWidth()); // poke a redraw
+    if (!next.length) { clearInterval(timer); onDone && onDone(); }
+    frontier = next;
+  }, 420);
+  return timer;
+}
+
+/* (c) blast radius, animated */
+let blastFg = null, blastTimer = 0;
 $('run-graph').onclick = async () => {
-  const btn = $('run-graph'), tty = $('tty-graph'), el = $('viz');
-  btn.disabled = true;
+  const btn = $('run-graph'), tty = $('tty-graph');
+  btn.disabled = true; clearInterval(blastTimer);
   tty.textContent = 'MATCH p = (a:Asset)<-[:INSTALLED_IN]-()-[:COMPOSED_OF*0..]->()-[:MADE_FROM]->(:MaterialLot {id:"LOT-00049"}) …';
   try {
-    const { data, ms } = await GQL('{ blastRadiusGraph(lotId: "LOT-00049") { nodes { id label } links { source target type } } }');
-    const g = data.blastRadiusGraph;
-    tty.innerHTML = '→ <b>' + g.nodes.length + ' nodes · ' + g.links.length + ' edges</b> · ' + ms +
-      ' ms · drag to untangle, zoom in for unit ids and edge types';
-    el.style.display = 'block'; $('viz-key').style.display = 'flex';
-    let fitted = false;
-    fg = ForceGraph()(el)
-      .width(el.clientWidth).height(el.clientHeight)
-      .graphData({ nodes: g.nodes.map(n => ({ ...n })), links: g.links.map(l => ({ ...l })) })
-      .nodeVal(NODE_VAL) // keeps the default hover hit area matched to the drawn dot
-      .nodeCanvasObject((n, ctx, scale) => {
-        const c = pal(), r = 4 * Math.sqrt(NODE_VAL(n));
-        ctx.fillStyle = c[n.label] || '#888';
-        ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI); ctx.fill();
-        if (n.label === 'SerializedUnit' && scale < 2.2) return; // 60 unit ids only once zoomed
-        ctx.font = (n.label === 'MaterialLot' ? '600 ' : '') + (11 / scale) + 'px "Spline Sans Mono", monospace';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = c.ink;
-        ctx.fillText(n.id, n.x, n.y + r + 3 / scale);
-      })
-      .nodeLabel(n => n.id + ' · ' + n.label)
-      .linkColor(() => pal().link)
-      .linkLabel(l => l.type)
-      .linkCanvasObjectMode(() => 'after')
-      .linkCanvasObject((l, ctx, scale) => {
-        if (scale < 1.8) return;
-        ctx.font = (9 / scale) + 'px "Spline Sans Mono", monospace';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal().muted;
-        ctx.fillText(l.type, (l.source.x + l.target.x) / 2, (l.source.y + l.target.y) / 2);
-      })
-      .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
-      .cooldownTime(4000) // 81 nodes settle fast; default 15s delays the zoom-to-fit
-      .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 40); } });
+    if (!blastFg) {
+      const { data, ms } = await GQL('{ blastRadiusGraph(lotId: "LOT-00049") ' + SUBQ + ' }');
+      $('viz-key').style.display = 'flex';
+      blastFg = renderGraph($('viz'), data.blastRadiusGraph);
+      blastFg._tty = tty; blastFg._ms = ms;
+    }
+    await blastFg._fit;
+    const seed = blastFg.graphData().nodes.find(n => n.id === 'LOT-00049');
+    let reached = 0;
+    blastTimer = propagate(blastFg, [seed], {
+      onHit: n => { if (n.label === 'Asset') tty.innerHTML = '→ defect propagating … <b>' + (++reached) + ' aircraft reached</b>'; },
+      onDone: () => tty.innerHTML = '→ one bad lot reaches <b>' + reached + ' aircraft</b> · ' + blastFg._ms +
+        ' ms · click any node to expand its neighborhood, zoom for unit ids and edge types',
+    });
+    btn.textContent = 'Replay the spread';
+  } catch (e) { fail(tty, e); }
+  btn.disabled = false;
+};
+
+/* (d) root cause, traced on the graph */
+let rootFg = null, rootTimer = 0;
+$('run-root-graph').onclick = async () => {
+  const btn = $('run-root-graph'), tty = $('tty-root-graph');
+  btn.disabled = true; clearInterval(rootTimer);
+  tty.textContent = 'MATCH p = (:FailureEvent)-[:ON_UNIT]->()-[:COMPOSED_OF*0..]->()-[:MADE_FROM]->(lot) …';
+  try {
+    if (!rootFg) {
+      const { data, ms } = await GQL('{ rootCauseGraph(eventIds: ' + JSON.stringify(EVENTS) + ') ' + SUBQ + ' }');
+      $('viz-root-key').style.display = 'flex';
+      rootFg = renderGraph($('viz-root'), data.rootCauseGraph);
+      rootFg._tty = tty; rootFg._ms = ms;
+    }
+    await rootFg._fit;
+    const { nodes, links } = rootFg.graphData();
+    const events = nodes.filter(n => n.label === 'FailureEvent');
+    // per-event directed walk down its own cone: how many events reach each candidate lot
+    const out = new Map(nodes.map(n => [n, []]));
+    links.forEach(l => out.get(l.source).push(l.target));
+    const hits = new Map();
+    events.forEach(ev => {
+      const seen = new Set([ev]), q = [ev];
+      while (q.length) out.get(q.pop()).forEach(m => { if (!seen.has(m)) { seen.add(m); q.push(m); } });
+      seen.forEach(n => { if (n.label === 'MaterialLot') hits.set(n, (hits.get(n) || 0) + 1); });
+    });
+    let traced = 0;
+    rootTimer = propagate(rootFg, events, { directed: true,
+      onHit: n => { if (n.label === 'MaterialLot') tty.innerHTML = '→ walking back … <b>' + (++traced) + ' candidate lots touched</b>'; },
+      onDone: () => {
+        const winner = [...hits.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (winner) {
+          winner[0].win = true; rootFg.nodeColor(rootFg.nodeColor());
+          tty.innerHTML = '→ all ' + events.length + ' failure paths converge: <b>' + winner[0].id +
+            ' · reached by ' + winner[1] + ' of ' + events.length + ' events</b> · ' + rootFg._ms + ' ms';
+        }
+      },
+    });
+    btn.textContent = 'Replay the trace';
   } catch (e) { fail(tty, e); }
   btn.disabled = false;
 };
@@ -439,6 +566,7 @@ $('run-root').onclick = async () => {
   } catch (e) { fail(tty, e); }
   btn.disabled = false;
 };
+
 
 /* (e) real recall */
 $('run-recall').onclick = async () => {

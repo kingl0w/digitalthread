@@ -11,6 +11,10 @@ type Query {
   topCampaigns(limit: Int = 10): [CampaignReach!]!
   "The blast-radius traversal as a subgraph — distinct nodes and edges, for visualization (capped at 2000 edges)."
   blastRadiusGraph(lotId: ID!): Subgraph!
+  "The root-cause walk as a subgraph: every path from the failure events down to candidate lots (at most 100 ids, capped at 2000 edges)."
+  rootCauseGraph(eventIds: [ID!]!): Subgraph!
+  "One hop of context around any node, for interactive exploration (capped at 200 edges)."
+  neighbors(id: ID!): Subgraph!
 }
 
 type Subgraph {
