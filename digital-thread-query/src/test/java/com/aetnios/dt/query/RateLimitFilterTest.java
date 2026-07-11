@@ -36,9 +36,15 @@ class RateLimitFilterTest {
     }
 
     @Test
-    void firstForwardedHopIsTheClient() throws Exception {
-        for (int i = 0; i <= 30; i++) hit("/graphql", "1.2.3.4, 10.0.0.1");
-        assertEquals(429, hit("/graphql", "1.2.3.4, 10.9.9.9"));
+    void lastForwardedHopIsTheClient() throws Exception {
+        for (int i = 0; i <= 30; i++) hit("/graphql", "10.0.0.1, 1.2.3.4");
+        assertEquals(429, hit("/graphql", "10.9.9.9, 1.2.3.4"));
+    }
+
+    @Test
+    void spoofedFirstHopsCannotMintFreshIdentities() throws Exception {
+        for (int i = 0; i <= 30; i++) hit("/graphql", "fake-" + i + ", 1.2.3.4");
+        assertEquals(429, hit("/graphql", "fake-final, 1.2.3.4"));
     }
 
     @Test

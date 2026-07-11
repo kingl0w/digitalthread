@@ -38,9 +38,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             window = now;
             counts.clear();
         }
-        // behind Fly's proxy the client is in X-Forwarded-For; first hop is the real client
+        // behind Render's proxy the client is in X-Forwarded-For. Take the LAST hop: the proxy
+        // appends the address it actually saw, while earlier hops are client-supplied and
+        // spoofable (rotating fake first hops would mint a fresh rate-limit identity per request)
         String forwarded = req.getHeader("X-Forwarded-For");
-        String client = forwarded != null ? forwarded.split(",")[0].trim() : req.getRemoteAddr();
+        String client = forwarded != null ? forwarded.substring(forwarded.lastIndexOf(',') + 1).trim()
+                : req.getRemoteAddr();
         if (counts.computeIfAbsent(client, k -> new AtomicInteger()).incrementAndGet() > LIMIT_PER_MINUTE) {
             res.setStatus(429);
             res.setContentType("application/json");

@@ -363,9 +363,12 @@ $('run-blast').onclick = async () => {
 const DARKQ = matchMedia('(prefers-color-scheme: dark)');
 // same hues as the legend swatches; canvas can't resolve light-dark(), so pick in JS
 const PAL = {
-  light: { MaterialLot: '#ad7300', SerializedUnit: '#2e64a6', Asset: '#0f825e', link: 'rgba(80,84,98,.30)' },
-  dark:  { MaterialLot: '#b88513', SerializedUnit: '#548bd0', Asset: '#1ea87b', link: 'rgba(190,196,212,.30)' },
+  light: { MaterialLot: '#ad7300', SerializedUnit: '#2e64a6', Asset: '#0f825e',
+           link: 'rgba(80,84,98,.30)', ink: '#1c222b', muted: '#474d57' },
+  dark:  { MaterialLot: '#b88513', SerializedUnit: '#548bd0', Asset: '#1ea87b',
+           link: 'rgba(190,196,212,.30)', ink: '#eae7e2', muted: '#b4b1aa' },
 };
+const NODE_VAL = n => n.label === 'MaterialLot' ? 7 : n.label === 'Asset' ? 3 : 1.5;
 const pal = () => PAL[DARKQ.matches ? 'dark' : 'light'];
 let fg = null;
 DARKQ.addEventListener('change', () => fg && fg.nodeColor(fg.nodeColor())); // poke a redraw
@@ -378,19 +381,35 @@ $('run-graph').onclick = async () => {
     const { data, ms } = await GQL('{ blastRadiusGraph(lotId: "LOT-00049") { nodes { id label } links { source target type } } }');
     const g = data.blastRadiusGraph;
     tty.innerHTML = '→ <b>' + g.nodes.length + ' nodes · ' + g.links.length + ' edges</b> · ' + ms +
-      ' ms · drag to untangle, scroll to zoom';
+      ' ms · drag to untangle, zoom in for unit ids and edge types';
     el.style.display = 'block'; $('viz-key').style.display = 'flex';
     let fitted = false;
     fg = ForceGraph()(el)
       .width(el.clientWidth).height(el.clientHeight)
       .graphData({ nodes: g.nodes.map(n => ({ ...n })), links: g.links.map(l => ({ ...l })) })
-      .nodeColor(n => pal()[n.label] || '#888')
-      .nodeVal(n => n.label === 'MaterialLot' ? 7 : n.label === 'Asset' ? 3 : 1.5)
+      .nodeVal(NODE_VAL) // keeps the default hover hit area matched to the drawn dot
+      .nodeCanvasObject((n, ctx, scale) => {
+        const c = pal(), r = 4 * Math.sqrt(NODE_VAL(n));
+        ctx.fillStyle = c[n.label] || '#888';
+        ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI); ctx.fill();
+        if (n.label === 'SerializedUnit' && scale < 2.2) return; // 60 unit ids only once zoomed
+        ctx.font = (n.label === 'MaterialLot' ? '600 ' : '') + (11 / scale) + 'px "Spline Sans Mono", monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = c.ink;
+        ctx.fillText(n.id, n.x, n.y + r + 3 / scale);
+      })
       .nodeLabel(n => n.id + ' · ' + n.label)
       .linkColor(() => pal().link)
       .linkLabel(l => l.type)
+      .linkCanvasObjectMode(() => 'after')
+      .linkCanvasObject((l, ctx, scale) => {
+        if (scale < 1.8) return;
+        ctx.font = (9 / scale) + 'px "Spline Sans Mono", monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal().muted;
+        ctx.fillText(l.type, (l.source.x + l.target.x) / 2, (l.source.y + l.target.y) / 2);
+      })
       .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
-      .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 30); } });
+      .cooldownTime(4000) // 81 nodes settle fast; default 15s delays the zoom-to-fit
+      .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 40); } });
   } catch (e) { fail(tty, e); }
   btn.disabled = false;
 };
