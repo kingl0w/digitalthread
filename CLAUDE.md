@@ -124,10 +124,14 @@ alternative but render.yaml (repo root) is the deployed config.
 - Landing page: / serves a live showcase (src/main/resources/index.html, served by
   GraphiqlPage) that runs the money queries against /graphql on button press; GraphiQL moved to
   a pinned-CDN page after Spring's bundled one broke on unpkg CORS. Design context for future
-  design work is in .impeccable.md. Section (c) draws the blast-radius subgraph live
-  (blastRadiusGraph field returns nodes+links; force-graph 1.45.0 pinned on jsdelivr; node
-  labels must filter out the shared :Node index label; canvas palette is JS-side because
-  canvas can't resolve light-dark()).
+  design work is in .impeccable.md. Sections (c)/(d) draw live subgraphs (blastRadiusGraph,
+  rootCauseGraph, neighbors fields; force-graph 1.45.0 pinned on jsdelivr; node labels must
+  filter out the shared :Node index label; canvas palette is JS-side because canvas can't
+  resolve light-dark()). Blast radius animates as a BFS wave from the lot; root cause walks
+  the nine failure cones down to the converging lot (winner computed client-side by per-event
+  directed walks); clicking any node merges its one-hop neighborhood in. /graphql is guarded
+  by 30 req/min keyed on the LAST X-Forwarded-For hop plus graphql-java depth-15/complexity-300
+  caps (GraphiQL introspection needs ~13/~200, keep headroom if the schema grows).
 - Code on GitHub: https://github.com/kingl0w/digitalthread (public, master). Render deploys it
   as a Blueprint (render.yaml) on every push; NEO4J_* secrets live in Render env vars.
 - Smoke-tested on the public URL: blastRadiusByLot(LOT-00049) 20 assets, rootCause 9/9 hits on
