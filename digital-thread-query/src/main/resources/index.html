@@ -500,7 +500,13 @@ async function expand(fg, node) {
     const nodes = data.neighbors.nodes.filter(n => !have.has(n.id))
       .map(n => ({ ...n, x: node.x + (Math.random() - .5) * 30, y: node.y + (Math.random() - .5) * 30 }));
     const links = data.neighbors.links.filter(l => !seen.has(lkey(l))).map(l => ({ ...l }));
-    if (nodes.length || links.length) fg.graphData({ nodes: [...cur.nodes, ...nodes], links: [...cur.links, ...links] });
+    if (nodes.length || links.length) {
+      fg.graphData({ nodes: [...cur.nodes, ...nodes], links: [...cur.links, ...links] });
+      fg._tty.innerHTML = '→ <b>' + node.id + '</b>: pulled in ' + nodes.length + ' new node' + (nodes.length === 1 ? '' : 's') +
+        ' and ' + links.length + ' edge' + (links.length === 1 ? '' : 's');
+    } else {
+      fg._tty.innerHTML = '→ <b>' + node.id + '</b>: its whole one-hop neighborhood is already on screen — try the lot, a unit, or zoom in';
+    }
   } catch (e) { fail(fg._tty, e); }
 }
 
