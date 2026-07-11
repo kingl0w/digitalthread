@@ -9,6 +9,24 @@ type Query {
   blastRadiusByCampaign(campaignId: ID!): [Asset!]!
   "AD campaigns ranked by registered fleet reach."
   topCampaigns(limit: Int = 10): [CampaignReach!]!
+  "The blast-radius traversal as a subgraph — distinct nodes and edges, for visualization (capped at 2000 edges)."
+  blastRadiusGraph(lotId: ID!): Subgraph!
+}
+
+type Subgraph {
+  nodes: [GraphNode!]!
+  links: [GraphLink!]!
+}
+
+type GraphNode {
+  id: ID!
+  label: String!
+}
+
+type GraphLink {
+  source: ID!
+  target: ID!
+  type: String!
 }
 
 type CampaignReach {

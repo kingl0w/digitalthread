@@ -71,6 +71,35 @@ public class ThreadQueries {
 
     public record CampaignReach(String campaignId, String title, int designs, int fleet) {}
 
+    public record GraphNode(String id, String label) {}
+    public record GraphLink(String source, String target, String type) {}
+    public record Subgraph(List<GraphNode> nodes, List<GraphLink> links) {}
+
+    // same traversal as BLAST_BY_LOT, but keep the paths: distinct edges of the reached subgraph.
+    // ponytail: LIMIT 2000 caps a public endpoint; paginate if a lot ever legitimately exceeds it
+    private static final String BLAST_GRAPH = """
+            MATCH p = (a:Asset)<-[:INSTALLED_IN]-(:SerializedUnit)-[:COMPOSED_OF*0..]->(u:SerializedUnit)-[:MADE_FROM]->(:MaterialLot {id: $id})
+            UNWIND relationships(p) AS r
+            WITH DISTINCT r
+            RETURN startNode(r).id AS src, [l IN labels(startNode(r)) WHERE l <> 'Node'][0] AS srcLabel,
+                   endNode(r).id AS dst, [l IN labels(endNode(r)) WHERE l <> 'Node'][0] AS dstLabel, type(r) AS type
+            LIMIT 2000
+            """;
+
+    @QueryMapping
+    public Subgraph blastRadiusGraph(@Argument String lotId) {
+        try (Session session = driver.session()) {
+            var nodes = new java.util.LinkedHashMap<String, GraphNode>();
+            List<GraphLink> links = session.run(BLAST_GRAPH, Map.of("id", lotId)).list(r -> {
+                String src = r.get("src").asString(), dst = r.get("dst").asString();
+                nodes.putIfAbsent(src, new GraphNode(src, r.get("srcLabel").asString()));
+                nodes.putIfAbsent(dst, new GraphNode(dst, r.get("dstLabel").asString()));
+                return new GraphLink(src, dst, r.get("type").asString());
+            });
+            return new Subgraph(List.copyOf(nodes.values()), links);
+        }
+    }
+
     @QueryMapping
     public List<Asset> blastRadiusByCampaign(@Argument String campaignId) {
         return assets(BLAST_BY_CAMPAIGN, campaignId);

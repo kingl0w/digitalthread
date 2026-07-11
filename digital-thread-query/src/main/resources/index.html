@@ -137,6 +137,21 @@ section { padding: clamp(44px, 7vw, 84px) 0 0; }
 @keyframes land { from { opacity: 0; transform: translateY(9px); } }
 @media (prefers-reduced-motion: reduce) { .plate { animation: none; } .dot.up { animation: none; } }
 
+/* live subgraph */
+.viz {
+  display: none; margin-top: 18px; height: clamp(340px, 52vw, 540px);
+  border: 1.6px solid var(--rule); border-radius: 3px; overflow: hidden; cursor: grab;
+}
+.viz:active { cursor: grabbing; }
+.key { display: none; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.key .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 7px; vertical-align: -1px; }
+/* dataviz-validated variants of the page hues, in-band for canvas fills in both modes */
+.sw-lot   { background: light-dark(#ad7300, #b88513); }
+.sw-unit  { background: light-dark(#2e64a6, #548bd0); }
+.sw-asset { background: light-dark(#0f825e, #1ea87b); }
+
 /* failure ledger + root cause bars */
 .ledger { font-family: var(--mono); font-size: 13px; border-top: 1px solid var(--rule); margin-top: 6px; }
 .ledger .row {
@@ -240,7 +255,29 @@ footer a { text-decoration-thickness: 1.5px; }
   <section>
     <div class="para">
       <aside>
-        <span class="mark">(c) ROOT CAUSE</span>
+        <span class="mark">(c) THE GRAPH ITSELF</span>
+        <h2>Same traversal, drawn live</h2>
+        <p>The blast radius as the database sees it: <code>LOT-00049</code> at the center, every
+        assembly path climbing to a registered aircraft. Drag nodes, scroll to zoom, hover for
+        identities.</p>
+      </aside>
+      <div class="body">
+        <button class="stamp" id="run-graph">Draw the subgraph</button>
+        <div class="tty" id="tty-graph"></div>
+        <div class="viz" id="viz" aria-label="Interactive blast-radius subgraph"></div>
+        <div class="key" id="viz-key">
+          <span><span class="sw sw-lot"></span>Material lot</span>
+          <span><span class="sw sw-unit"></span>Serialized unit</span>
+          <span><span class="sw sw-asset"></span>Registered aircraft</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(d) ROOT CAUSE</span>
         <h2>Nine failures. One common thread.</h2>
         <p>Nine cracked engine primaries reported across the fleet in ten days. Walk each one back
         down its physical tree and rank what they share.</p>
@@ -258,7 +295,7 @@ footer a { text-decoration-thickness: 1.5px; }
   <section>
     <div class="para">
       <aside>
-        <span class="mark">(d) THE REAL THING</span>
+        <span class="mark">(e) THE REAL THING</span>
         <h2>A real recall, measured from rule text</h2>
         <p>Airworthiness Directive <code>2020-24046</code> names its affected models only in
         Federal Register prose. Parsed, linked, and traversed against the live registry.</p>
@@ -282,6 +319,7 @@ footer a { text-decoration-thickness: 1.5px; }
   </footer>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/force-graph@1.45.0/dist/force-graph.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const GQL = async (query) => {
@@ -321,7 +359,43 @@ $('run-blast').onclick = async () => {
   btn.disabled = false;
 };
 
-/* (c) root cause */
+/* (c) the live subgraph */
+const DARKQ = matchMedia('(prefers-color-scheme: dark)');
+// same hues as the legend swatches; canvas can't resolve light-dark(), so pick in JS
+const PAL = {
+  light: { MaterialLot: '#ad7300', SerializedUnit: '#2e64a6', Asset: '#0f825e', link: 'rgba(80,84,98,.30)' },
+  dark:  { MaterialLot: '#b88513', SerializedUnit: '#548bd0', Asset: '#1ea87b', link: 'rgba(190,196,212,.30)' },
+};
+const pal = () => PAL[DARKQ.matches ? 'dark' : 'light'];
+let fg = null;
+DARKQ.addEventListener('change', () => fg && fg.nodeColor(fg.nodeColor())); // poke a redraw
+addEventListener('resize', () => fg && fg.width($('viz').clientWidth));
+$('run-graph').onclick = async () => {
+  const btn = $('run-graph'), tty = $('tty-graph'), el = $('viz');
+  btn.disabled = true;
+  tty.textContent = 'MATCH p = (a:Asset)<-[:INSTALLED_IN]-()-[:COMPOSED_OF*0..]->()-[:MADE_FROM]->(:MaterialLot {id:"LOT-00049"}) …';
+  try {
+    const { data, ms } = await GQL('{ blastRadiusGraph(lotId: "LOT-00049") { nodes { id label } links { source target type } } }');
+    const g = data.blastRadiusGraph;
+    tty.innerHTML = '→ <b>' + g.nodes.length + ' nodes · ' + g.links.length + ' edges</b> · ' + ms +
+      ' ms · drag to untangle, scroll to zoom';
+    el.style.display = 'block'; $('viz-key').style.display = 'flex';
+    let fitted = false;
+    fg = ForceGraph()(el)
+      .width(el.clientWidth).height(el.clientHeight)
+      .graphData({ nodes: g.nodes.map(n => ({ ...n })), links: g.links.map(l => ({ ...l })) })
+      .nodeColor(n => pal()[n.label] || '#888')
+      .nodeVal(n => n.label === 'MaterialLot' ? 7 : n.label === 'Asset' ? 3 : 1.5)
+      .nodeLabel(n => n.id + ' · ' + n.label)
+      .linkColor(() => pal().link)
+      .linkLabel(l => l.type)
+      .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+      .onEngineStop(() => { if (!fitted) { fitted = true; fg.zoomToFit(400, 30); } });
+  } catch (e) { fail(tty, e); }
+  btn.disabled = false;
+};
+
+/* (d) root cause */
 const EVENTS = Array.from({ length: 9 }, (_, i) => 'SEED-F-000' + (i + 1));
 $('ledger').innerHTML = EVENTS.map((id, i) =>
   '<div class="row"><span>' + id + '</span><span>2022-06-0' + (i + 2) + '</span><span><b>CRACKED</b> · engine primary</span></div>').join('');
@@ -347,7 +421,7 @@ $('run-root').onclick = async () => {
   btn.disabled = false;
 };
 
-/* (d) real recall */
+/* (e) real recall */
 $('run-recall').onclick = async () => {
   const btn = $('run-recall'), tty = $('tty-recall');
   btn.disabled = true;

@@ -56,6 +56,8 @@ class GraphQlWiringTest {
                 .execute().path("topCampaigns").entityList(Object.class).hasSize(0);
         tester.document("{ rootCause(eventIds: [\"E\"]) { lotId supplierId hits } }")
                 .execute().path("rootCause").entityList(Object.class).hasSize(0);
+        tester.document("{ blastRadiusGraph(lotId: \"L\") { nodes { id label } links { source target type } } }")
+                .execute().path("blastRadiusGraph.nodes").entityList(Object.class).hasSize(0);
     }
 
     @Test
