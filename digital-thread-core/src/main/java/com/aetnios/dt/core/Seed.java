@@ -189,10 +189,29 @@ public class Seed {
         unitsByLot.computeIfAbsent(lot, k -> new ArrayList<>()).add(unitId);
     }
 
+    // discrepancy text mirrors real SDR prose so seed events live in the same embedding space as
+    // canonical ones. Indexed by seq, deliberately not rng-drawn: consuming rng here would shift
+    // every downstream draw and invalidate the documented ground truth.
+    private static final String[] CRACKED_TEXT = {
+            "DURING SCHEDULED INSPECTION FOUND FATIGUE CRACK IN COMPONENT. CRACK ORIGINATES AT FASTENER HOLE AND PROPAGATES OUTBOARD. PART REMOVED AND REPLACED.",
+            "VISUAL INSPECTION REVEALED CRACK IN PART ADJACENT TO ATTACH POINT. DYE PENETRANT CONFIRMED CRACK EXTENDS THROUGH MATERIAL THICKNESS. REPLACED WITH SERVICEABLE UNIT.",
+            "FOUND CRACKED COMPONENT DURING ROUTINE MAINTENANCE. CRACK APPEARS TO INITIATE FROM MACHINING MARK, CONSISTENT WITH MATERIAL FATIGUE. PART REPLACED AND OPS CHECKED GOOD.",
+    };
+    private static final String[] NOISE_TEXT = {
+            "HYDRAULIC FLUID LEAK OBSERVED AT FITTING. TIGHTENED B-NUT AND LEAK CHECK PERFORMED, NO FURTHER LEAKAGE NOTED.",
+            "WIRE BUNDLE FOUND CHAFED AGAINST STRUCTURE. INSTALLED SPIRAL WRAP AND SECURED WITH CLAMPS PER STANDARD PRACTICES.",
+            "CORROSION FOUND ON SURFACE DURING INSPECTION. TREATED AND RESEALED IN ACCORDANCE WITH MAINTENANCE MANUAL.",
+            "BEARING EXHIBITED EXCESSIVE PLAY DURING OPERATIONAL CHECK. REMOVED AND REPLACED, RIGGING VERIFIED.",
+            "INDICATOR SHOWED INTERMITTENT FALSE READING IN FLIGHT. CONNECTOR CLEANED AND RESEATED, SYSTEM TESTED NORMAL.",
+            "VALVE FAILED TO ACTUATE DURING FUNCTIONAL TEST. UNIT REPLACED AND SYSTEM OPERATION VERIFIED SATISFACTORY.",
+    };
+
     private String failure(int seq, String unitId, String mode) throws Exception {
         String id = String.format("SEED-F-%04d", seq);
+        String[] texts = mode.equals("CRACKED") ? CRACKED_TEXT : NOISE_TEXT;
         events.write(Jsonl.obj().put("label", "FailureEvent").put("id", id)
                 .put("unitId", unitId).put("mode", mode)
+                .put("discrepancy", texts[seq % texts.length])
                 .put("date", LocalDate.of(2022, 6, 1).plusDays(seq % 90).toString()).put("source", "seed"));
         return id;
     }

@@ -162,6 +162,51 @@ MATCH p=(a:Asset)<-[:INSTALLED_IN]-(:SerializedUnit)-[:COMPOSED_OF*0..5]->()
 RETURN p LIMIT 25
 ```
 
+## Attach an LLM (hybrid retrieval + MCP)
+
+The graph's answers are exact traversals, so an LLM should never guess over embedded chunks —
+it only needs a fuzzy *entry point*. The semantic layer embeds every failure narrative (real FAA
+SDR prose and seeded events) with a local model and indexes them for vector search; everything
+downstream of the match is deterministic Cypher with provenance.
+
+```bash
+# one-time: local embedding model (free, offline — no text leaves the machine)
+ollama pull nomic-embed-text
+
+# after GraphApp: embed failure narratives + create the vector index (idempotent)
+cd digital-thread-core && mvn -q compile exec:java -Dapp.main=com.aetnios.dt.core.Embed
+```
+
+**Investigate** — paste a complaint, get similar historical failures, the material lot their
+lineage converges on, and every aircraft still carrying parts from it:
+
+```graphql
+{ investigate(text: "inspection found fatigue crack propagating from fastener hole") {
+    suspectLot
+    rootCause { lotId supplierId hits }
+    matches { eventId score nNumber }
+    blastRadius { id nNumber }
+} }
+```
+
+Fuzzy in, exact out: the vector match surfaces the nine seeded cluster events (plus real SDR
+crack reports), the lineage walk converges on `LOT-00049` with 9/9 hits, and the blast radius
+is the same 20 assets the ground-truth manifest asserts. `similarFailures(text, k)` exposes the
+entry point alone.
+
+Any MCP-capable client (Claude Code, local models via a bridge) gets the whole read surface as
+tools — `investigate`, `similar_failures`, `root_cause`, `blast_radius_by_*`, `neighbors` for
+step-by-step traversal:
+
+```bash
+claude mcp add digital-thread -- uv run --script mcp/server.py
+```
+
+The hosted demo has no embedding service (`DT_EMBED_URL` is empty), so the semantic fields
+return a clean error there; everything else works. Point the MCP server at it with
+`DT_GRAPHQL_URL=https://digital-thread-query.onrender.com/graphql` if you only need the exact
+queries.
+
 ## Event-driven ingestion
 
 The write path is where "many messy sources, one identity" lives. The replay publisher strips

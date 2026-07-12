@@ -15,6 +15,24 @@ type Query {
   rootCauseGraph(eventIds: [ID!]!): Subgraph!
   "One hop of context around any node, for interactive exploration (capped at 200 edges)."
   neighbors(id: ID!): Subgraph!
+  "Semantic entry point: failure events whose narrative reads like this text (vector search)."
+  similarFailures(text: String!, k: Int = 10): [FailureMatch!]!
+  "Hybrid retrieval, fuzzy in / exact out: similar failures, the lots their lineage converges on, and the blast radius of the top suspect."
+  investigate(text: String!, k: Int = 15): Investigation!
+}
+
+type FailureMatch {
+  eventId: ID!
+  score: Float!
+  text: String
+  nNumber: String
+}
+
+type Investigation {
+  matches: [FailureMatch!]!
+  rootCause: [LotScore!]!
+  suspectLot: ID
+  blastRadius: [Asset!]!
 }
 
 type Subgraph {

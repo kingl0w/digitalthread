@@ -12,6 +12,9 @@ services:
     envVars:
       - key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
         value: health
+      # no embedding service on the free tier: similarFailures/investigate return a clean error
+      - key: DT_EMBED_URL
+        value: ""
       - key: NEO4J_URI
         sync: false
       - key: NEO4J_USER

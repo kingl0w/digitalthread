@@ -28,11 +28,12 @@ import static org.mockito.Mockito.when;
  * schema.graphqls and the records in ThreadQueries (the exact bug class the smoke tests hit,
  * assetId vs id) without needing a Neo4j.
  */
-@GraphQlTest(ThreadQueries.class)
+@GraphQlTest({ThreadQueries.class, RagQueries.class})
 class GraphQlWiringTest {
 
     @Autowired GraphQlTester tester;
     @MockBean Driver driver;
+    @MockBean Embedder embedder;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -42,6 +43,7 @@ class GraphQlWiringTest {
         when(driver.session()).thenReturn(session);
         when(session.run(anyString(), anyMap())).thenReturn(result);
         doReturn(List.of()).when(result).list(any(Function.class));
+        when(embedder.embed(anyString())).thenReturn(List.of(0.0));
     }
 
     @Test
@@ -62,6 +64,30 @@ class GraphQlWiringTest {
                 .execute().path("rootCauseGraph.nodes").entityList(Object.class).hasSize(0);
         tester.document("{ neighbors(id: \"N\") { nodes { id label } links { source target type } } }")
                 .execute().path("neighbors.nodes").entityList(Object.class).hasSize(0);
+        tester.document("{ similarFailures(text: \"crack\") { eventId score text nNumber } }")
+                .execute().path("similarFailures").entityList(Object.class).hasSize(0);
+        tester.document("{ investigate(text: \"crack\") { matches { eventId } rootCause { lotId hits } suspectLot blastRadius { id } } }")
+                .execute().path("investigate.matches").entityList(Object.class).hasSize(0);
+    }
+
+    // non-null list types add a second bubbled-up error; assert on the typed one, not the count
+    @Test
+    void similarFailuresKOutOfRangeIsBadRequest() {
+        tester.document("{ similarFailures(text: \"t\", k: 51) { eventId } }")
+                .execute().errors().satisfy(errors ->
+                        assertEquals(1, errors.stream()
+                                .filter(e -> e.getErrorType() == ErrorType.BAD_REQUEST
+                                        && "k must be 1..50".equals(e.getMessage())).count()));
+    }
+
+    @Test
+    void disabledEmbedderIsCleanErrorNotServerError() {
+        when(embedder.embed(anyString())).thenThrow(new IllegalStateException("semantic search is not enabled"));
+        tester.document("{ similarFailures(text: \"t\") { eventId } }")
+                .execute().errors().satisfy(errors ->
+                        assertEquals(1, errors.stream()
+                                .filter(e -> e.getErrorType() == ErrorType.FORBIDDEN
+                                        && "semantic search is not enabled".equals(e.getMessage())).count()));
     }
 
     @Test
