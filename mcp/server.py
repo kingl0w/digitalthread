@@ -132,4 +132,18 @@ if __name__ == "__main__":
         assert scrub({"a": ["ok\nline", 42, None]}) == {"a": ["ok\nline", 42, None]}
         print("selftest OK")
         sys.exit(0)
+    if sys.argv[1:] == ["--selftest-live"]:
+        # drives every tool's real GraphQL document against a running service —
+        # catches schema/field drift the offline selftest can't
+        assert top_campaigns(1)[0]["campaignId"]
+        assert len(blast_radius_by_lot("LOT-00049")) == 20
+        assert root_cause(["SEED-F-0001"])[0]["lotId"] == "LOT-00049"
+        assert blast_radius_by_revision("REV:SYN:2072418:EMPENNAGE:PRIMARY:A")
+        assert len(blast_radius_by_campaign("2020-24046")) == 6393
+        assert neighbors("LOT-00049")["nodes"]
+        inv = investigate("fatigue crack at fastener hole")  # needs local embedder
+        assert inv["suspectLot"] == "LOT-00049" and len(inv["blastRadius"]) == 20
+        assert similar_failures("fatigue crack")[0]["eventId"]
+        print("live selftest OK: all 8 tools against", GRAPHQL)
+        sys.exit(0)
     mcp.run()
