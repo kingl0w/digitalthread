@@ -378,6 +378,37 @@ PartCondition         CRACKED · HORIZONTAL STAB</pre>
     </div>
   </section>
 
+  <section>
+    <div class="para">
+      <aside>
+        <span class="mark">(f) THE MACHINE INTERFACE</span>
+        <h2>Ground truth for an LLM</h2>
+        <p>Language models guess. This graph doesn't. Connected over MCP, the read surface becomes
+        tools an agent can call — and every answer is a deterministic traversal with provenance
+        back to source records, never generation.</p>
+      </aside>
+      <div class="body">
+        <div class="docs">
+          <div class="doc">
+            <span class="src">Model Context Protocol · mcp/server.py</span>
+            <pre>claude mcp add digital-thread -- uv run --script mcp/server.py</pre>
+            <p class="note">Eight tools: <code>investigate</code>, <code>similar_failures</code>,
+            <code>root_cause</code>, <code>blast_radius_by_*</code>, <code>neighbors</code> for
+            step-by-step traversal. Point it at this endpoint or your own.</p>
+          </div>
+        </div>
+        <div class="thread" aria-label="Hybrid retrieval: fuzzy in, exact out">
+          <span class="n fail">"…fatigue crack at fastener hole"</span><span class="e">—</span><span class="lbl">VECTOR MATCH</span><span class="e">→</span><span class="n">9 failure events</span><span class="e">—</span><span class="lbl">MADE_FROM</span><span class="e">→</span><span class="n lot">LOT-00049</span><span class="e">—</span><span class="lbl">BLAST RADIUS</span><span class="e">→</span><span class="n asset">20 aircraft</span>
+        </div>
+        <p style="color:var(--ink-2); max-width:60ch">The fuzzy step — free text finding its way into
+        the graph through embedded failure narratives — runs fully offline against a local embedding
+        model; no text leaves your network, and it is not enabled on this public instance. The exact
+        tools work against this live endpoint right now. Both converge on answers the ground-truth
+        manifest can verify: the thread above is asserted, not illustrated.</p>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <span>Java 21 · Spring Boot · Neo4j 5 · GraphQL · Kafka ingestion · SHACL-gated loads</span>
     <span><a href="/graphiql">Open the GraphiQL console</a> · <a href="https://github.com/kingl0w/digitalthread">Source on GitHub</a></span>
