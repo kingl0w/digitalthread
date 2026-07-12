@@ -37,7 +37,9 @@ public class Embedder {
                     .body(Map.of("model", model, "input", List.of("search_query: " + text)))
                     .retrieve().body(JsonNode.class);
         } catch (Exception e) {
-            throw new IllegalStateException("embedding service unreachable at " + url, e);
+            // unreachable reads the same as unset to a caller: this deployment can't embed
+            throw new IllegalStateException(
+                    "semantic search is not enabled on this deployment (no embedding service reachable)", e);
         }
         List<Double> vec = new ArrayList<>();
         resp.path("embeddings").path(0).forEach(d -> vec.add(d.asDouble()));
