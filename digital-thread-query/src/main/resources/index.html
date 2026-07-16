@@ -51,28 +51,38 @@ a:hover { color: var(--orange); }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--green) 45%, transparent); }
                    70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 
-header.mast { padding: clamp(34px, 6vw, 72px) 0 0; }
-.kicker {
-  font-variation-settings: "wdth" 122; font-weight: 600; font-size: 13px;
-  letter-spacing: .34em; text-transform: uppercase; color: var(--orange);
+header.mast { padding: clamp(30px, 5vw, 58px) 0 0; }
+.docket-line {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin: 0;
+  overflow-wrap: anywhere;
 }
 h1 {
   font-variation-settings: "wdth" 68; font-weight: 800;
   font-size: clamp(46px, 9.2vw, 118px); line-height: .92; letter-spacing: -.01em;
-  text-transform: uppercase; margin: 10px 0 0; text-wrap: balance;
+  text-transform: uppercase; margin: 14px 0 0; text-wrap: balance;
 }
-h1 em { font-style: normal; color: var(--orange); }
-.standfirst {
-  max-width: 58ch; font-size: clamp(16px, 1.4vw + 9px, 20px); line-height: 1.5;
-  color: var(--ink-2); margin: 26px 0 0;
+/* Federal Register run-in briefs: "SUMMARY: prose…" */
+.brief { max-width: 62ch; margin: 26px 0 0; }
+.brief p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.55; }
+.brief b:first-child {
+  color: var(--ink); font-variation-settings: "wdth" 118; font-weight: 700;
+  font-size: .82em; letter-spacing: .1em; text-transform: uppercase; padding-right: 6px;
 }
-.standfirst strong { color: var(--ink); }
-.mast-meta {
-  display: flex; flex-wrap: wrap; gap: 6px 34px; margin: 34px 0 0; padding: 12px 0;
-  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-  font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
+.brief strong { color: var(--ink); }
+/* boxed form fields, FAA Form 8010-4 style */
+.mast-form { display: flex; flex-wrap: wrap; margin: 32px 0 0; }
+.mast-form .field {
+  flex: 1 1 150px; border: 1.6px solid var(--ink); margin: -1.6px 0 0 -1.6px;
+  padding: 8px 13px 11px; min-width: 0;
 }
-.mast-meta b { color: var(--ink); font-weight: 600; }
+.mast-form small {
+  display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.mast-form b {
+  font-family: var(--mono); font-weight: 600; font-size: clamp(19px, 2.3vw, 27px);
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
 
 /* ---- sections -------------------------------------------------------- */
 section { padding: clamp(44px, 7vw, 84px) 0 0; }
@@ -209,19 +219,24 @@ footer a { text-decoration-thickness: 1.5px; }
   </div>
 
   <header class="mast">
-    <div class="kicker">Vehicle-lifecycle knowledge graph</div>
-    <h1>Many messy sources in.<br>One graph that <em>answers back.</em></h1>
-    <p class="standfirst">Three federal data feeds describe the same physical aircraft in three
-    different vocabularies. This system resolves them into one governed Neo4j graph, grafts on an
-    as-built supply chain, and answers the two questions no single source can:
-    <strong>which aircraft does a defect reach</strong>, and <strong>what does a cluster of
-    failures have in common?</strong> Everything below runs live against the real database.</p>
-    <div class="mast-meta">
-      <span><b>176,826</b> nodes</span>
-      <span><b>187,073</b> relationships</span>
-      <span><b>73,158</b> real Cessna aircraft</span>
-      <span><b>3,891</b> real failure reports</span>
-      <span><b>2,004</b> real AD campaigns</span>
+    <p class="docket-line">[Docket No. DT-2026-001; Product Identifier CESSNA-GA; rngSeed 42]</p>
+    <h1>Many messy sources in.<br>One graph that answers back.</h1>
+    <div class="brief">
+      <p><b>SUBJECT:</b> Vehicle-lifecycle knowledge graph; recall blast radius and failure root
+      cause across a fleet no single federal feed can see whole.</p>
+      <p><b>SUMMARY:</b> Three federal data feeds describe the same physical aircraft in three
+      different vocabularies. This system resolves them into one governed Neo4j graph, grafts on
+      an as-built supply chain, and answers the two questions no single source can:
+      <strong>which aircraft does a defect reach</strong>, and <strong>what does a cluster of
+      failures have in common?</strong></p>
+      <p><b>ACTION:</b> Live demonstration. Every query below executes against the real database.</p>
+    </div>
+    <div class="mast-form">
+      <div class="field"><small>1. Nodes</small><b>176,826</b></div>
+      <div class="field"><small>2. Relationships</small><b>187,073</b></div>
+      <div class="field"><small>3. Real Cessna aircraft</small><b>73,158</b></div>
+      <div class="field"><small>4. Real failure reports</small><b>3,891</b></div>
+      <div class="field"><small>5. Real AD campaigns</small><b>2,004</b></div>
     </div>
   </header>
 
